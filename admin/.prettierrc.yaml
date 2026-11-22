@@ -1,0 +1,8 @@
+# 每行最大宽度
+printWidth: 100
+# 所有多行结构都加尾随逗号，与 Prettier 3 默认一致
+trailingComma: "all"
+# HTML 空白不敏感，避免模板换行被格式化破坏
+htmlWhitespaceSensitivity: "ignore"
+# 统一 LF 换行，避免跨平台差异产生大量 diff
+endOfLine: "lf"

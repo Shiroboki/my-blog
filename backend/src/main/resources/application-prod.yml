@@ -1,0 +1,184 @@
+# 生产环境配置
+
+# 基础服务
+server:
+  port: 8000
+  # 经 Nginx 等代理访问且开启 OIDC 时取消注释
+  # forward-headers-strategy: framework
+
+spring:
+  # MySQL 数据库
+  datasource:
+    url: jdbc:mysql://www.youlai.tech:3306/youlai_admin?zeroDateTimeBehavior=convertToNull&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&autoReconnect=true&allowMultiQueries=true
+    username: youlai
+    password: 123456
+  # Redis（登录会话、验证码、限流等）
+  data:
+    redis:
+      database: 1
+      host: www.youlai.tech
+      port: 6379
+      password: 123456
+      timeout: 10s
+
+# SQL 日志
+mybatis-plus:
+  configuration:
+    # 排查 SQL 时，将对应 Mapper 的日志级别调为 DEBUG
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+# 安全与访问
+security:
+  token:
+    type: jwt # 令牌策略：jwt / redis-token
+    jwt:
+      secret-key: SecretKey012345678901234567890123456789012345678901234567890123456789 # HS256，至少 32 字节 UTF-8
+
+# 请求限流
+rate-limit:
+  # @RateLimit 未指定参数时使用的接口限流规则
+  default-limit: 10
+
+# 文件存储
+storage:
+  # 存储类型：s3 | aliyun | local
+  type: s3
+  # 上传限制
+  upload:
+    # 允许的文件扩展名，留空不限制
+    allowed-extensions:
+      - jpg
+      - jpeg
+      - png
+      - gif
+  # S3 对象存储（S3 协议兼容服务，默认部署 RustFS）
+  s3:
+    endpoint: http://localhost:9000
+    access-key: rustfs-admin
+    secret-key: rustfs-admin
+    bucket: public
+    # 文件访问域名；留空时使用对象存储端点生成访问地址
+    domain:
+  # 阿里云 OSS
+  aliyun:
+    endpoint: oss-cn-hangzhou.aliyuncs.com
+    access-key-id: ""
+    access-key-secret: ""
+    bucket: ""
+  # 本地存储
+  local:
+    # 存储根目录（相对路径基于工作目录；生产建议挂载独立卷）
+    path: ./uploads/
+
+# 接口文档：/swagger-ui.html
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html # Swagger UI 访问路径
+    operationsSorter: alpha # 接口按方法名排序
+    tags-sorter: alpha # 标签按字母排序
+  api-docs:
+    path: /v3/api-docs # OpenAPI JSON 地址
+  group-configs: # 分组配置
+    - group: "系统管理" # 分组名称
+      paths-to-match: # 匹配的请求路径
+        - "/**"
+      packages-to-scan: # 扫描的 Controller 包，限制只生成指定包的接口文档
+        - com.youlai.boot.auth.password.controller
+        - com.youlai.boot.auth.sms.controller
+        - com.youlai.boot.auth.qrcode.controller
+        - com.youlai.boot.auth.wxma.controller
+        - com.youlai.boot.auth.session.controller
+        - com.youlai.boot.system.controller
+        - com.youlai.boot.codegen.controller
+        - com.youlai.boot.module.form.controller
+        - com.youlai.boot.module.workflow.controller
+        - com.youlai.boot.module.blog.controller
+  default-flat-param-object: true # 将对象参数扁平化显示在文档中
+
+---
+
+# 邮件、短信、小程序与定时任务（可选）
+
+spring:
+  # 邮件（可选）
+  mail:
+    host: "" # SMTP 地址，如 smtp.example.com
+    username: "" # SMTP 登录账号，如 noreply@example.com
+    password: "" # SMTP 密码或邮箱授权码，由邮件服务商提供
+    from: "" # 发件人地址，如 noreply@example.com，通常与 username 一致
+
+# 阿里云短信（可选）
+sms:
+  aliyun:
+    access-key-id: "" # 在阿里云 RAM 控制台创建的 AccessKey ID
+    access-key-secret: "" # 与 AccessKey ID 配套的密钥
+    sign-name: "" # 短信控制台审核通过的签名名称，如 示例科技
+    # 模板 CODE 从短信控制台获取，格式如 SMS_123456789
+    templates:
+      register: "" # 注册验证码模板（预留）
+      login: "" # 登录验证码模板，模板变量使用 ${code}
+      change-mobile: "" # 修改手机号验证码模板，模板变量使用 ${code}
+
+# 微信小程序（可选）
+wx:
+  miniapp:
+    appid: ""
+    secret: ""
+
+# 定时任务（可选）
+xxl:
+  job:
+    enabled: false
+    admin:
+      # 调度中心地址，多个用逗号分隔
+      addresses: ""
+    accessToken: ""
+    executor:
+      appname: xxl-job-executor-${spring.application.name}
+
+---
+
+# OIDC 统一认证（可选）
+
+security:
+  oidc:
+    enabled: false
+    # 认证中心地址，如 https://sso.example.com/realms/youlai
+    issuer: ""
+    client-id: ""
+    client-secret: ""
+    # 认证成功后的前端回跳地址，如 http://localhost:3000/#/oidc/callback
+    frontend-callback-uri: ""
+
+---
+
+# AI 对话（可选）
+
+spring:
+  ai:
+    openai:
+      # 百炼 OpenAI 兼容地址；切换服务商时修改
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: "" # 填写服务商 API 密钥
+      chat:
+        model: qwen3.7-flash
+        temperature: 0.3
+        # 百炼扩展参数，切换服务商时按需调整
+        extra-body:
+          "[enable_thinking]": false
+
+---
+
+# 工作流（可选）
+
+flowable:
+  # 总开关，同时控制业务组件和引擎
+  process:
+    enabled: false
+  # 使用系统账号体系，不启用 IDM 和事件注册表
+  idm:
+    enabled: false
+  eventregistry:
+    enabled: false
+  # 生产环境由部署流程提前建表/升级，启动时仅校验
+  database-schema-update: false

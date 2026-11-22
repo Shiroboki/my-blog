@@ -1,0 +1,38 @@
+package com.youlai.boot.support.sms;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+import java.util.Map;
+
+/**
+ * 阿里云短信配置
+ *
+ * @author Ray
+ * @since 2024/8/17
+ */
+@Data
+@Component
+@ConfigurationProperties(prefix = "sms.aliyun")
+public class AliyunSmsProperties {
+
+    /** 访问密钥 ID */
+    private String accessKeyId;
+
+    /** 访问密钥 Secret */
+    private String accessKeySecret;
+
+    /** API 域名，默认使用阿里云短信公共端点 */
+    private String domain = "dysmsapi.aliyuncs.com";
+
+    /** 区域，默认 cn-shanghai */
+    private String regionId = "cn-shanghai";
+
+    /** 短信签名 */
+    private String signName;
+
+    /** 短信模板集合，key 为模板用途(login/register)，value 为模板CODE */
+    private Map<String, String> templates;
+
+}

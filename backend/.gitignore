@@ -1,0 +1,15 @@
+# Created by .ignore support plugin (hsz.mobi)
+
+# IntelliJ project files
+.idea
+*.iml
+out
+gen
+target
+*.log
+logs
+.history
+
+application-youlai.yml
+/boot-run*.log
+/boot-run*.err

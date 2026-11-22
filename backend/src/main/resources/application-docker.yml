@@ -1,0 +1,77 @@
+# Docker Compose 容器化运行配置
+
+server:
+  port: 8000
+  forward-headers-strategy: framework
+
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST:mysql}:${DB_PORT:3306}/${DB_NAME:youlai_admin}?zeroDateTimeBehavior=convertToNull&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&autoReconnect=true&allowMultiQueries=true&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:123456}
+  data:
+    redis:
+      database: ${REDIS_DATABASE:0}
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      timeout: 10s
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+security:
+  token:
+    type: jwt
+    jwt:
+      secret-key: ${JWT_SECRET_KEY:SecretKey012345678901234567890123456789012345678901234567890123456789}
+
+rate-limit:
+  default-limit: 30
+
+storage:
+  type: ${STORAGE_TYPE:local}
+  upload:
+    allowed-extensions:
+      - jpg
+      - jpeg
+      - png
+      - gif
+      - webp
+  local:
+    path: ${STORAGE_LOCAL_PATH:/app/uploads/}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: alpha
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: "系统管理"
+      paths-to-match:
+        - "/**"
+      packages-to-scan:
+        - com.youlai.boot.auth.password.controller
+        - com.youlai.boot.auth.sms.controller
+        - com.youlai.boot.auth.qrcode.controller
+        - com.youlai.boot.auth.wxma.controller
+        - com.youlai.boot.auth.session.controller
+        - com.youlai.boot.auth.oidc.controller
+        - com.youlai.boot.system.controller
+        - com.youlai.boot.codegen.controller
+        - com.youlai.boot.module.form.controller
+        - com.youlai.boot.module.workflow.controller
+        - com.youlai.boot.module.blog.controller
+  default-flat-param-object: true
+
+flowable:
+  process:
+    enabled: false
+  idm:
+    enabled: false
+  eventregistry:
+    enabled: false
+  database-schema-update: false

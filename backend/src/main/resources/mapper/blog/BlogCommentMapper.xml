@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.boot.module.blog.mapper.BlogCommentMapper">
+
+    <select id="getCommentPage" resultType="com.youlai.boot.module.blog.model.vo.BlogCommentVO">
+        SELECT
+            c.id,
+            c.article_id,
+            a.title AS article_title,
+            c.parent_id,
+            c.nickname,
+            c.email,
+            c.website,
+            c.content,
+            c.quote_text,
+            c.quote_start,
+            c.quote_end,
+            c.ip_region,
+            c.status,
+            c.is_admin,
+            c.create_time
+        FROM blog_comment c
+        LEFT JOIN blog_article a ON a.id = c.article_id AND a.is_deleted = 0
+        <where>
+            c.is_deleted = 0
+            <if test="queryParams.articleId != null">
+                AND c.article_id = #{queryParams.articleId}
+            </if>
+            <if test="queryParams.status != null">
+                AND c.status = #{queryParams.status}
+            </if>
+            <if test='queryParams.keywords != null and queryParams.keywords.trim() neq ""'>
+                AND (
+                    c.nickname LIKE CONCAT('%', #{queryParams.keywords}, '%')
+                    OR c.content LIKE CONCAT('%', #{queryParams.keywords}, '%')
+                    OR c.quote_text LIKE CONCAT('%', #{queryParams.keywords}, '%')
+                )
+            </if>
+        </where>
+        ORDER BY c.create_time DESC, c.id DESC
+    </select>
+</mapper>

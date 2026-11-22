@@ -1,0 +1,47 @@
+package ${packageName}.${moduleName}.${subpackageName};
+
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+#if(${hasLocalDate})
+import java.time.LocalDate;
+#end
+#if(${hasLocalDateTime})
+import java.time.LocalDateTime;
+#end
+#if(${hasBigDecimal})
+import java.math.BigDecimal;
+#end
+import ${packageName}.common.base.BaseEntity;
+
+/**
+ * $!{businessName}实体对象
+ *
+ * @author ${author}
+ * @since ${date}
+ */
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("${tableName}")
+public class ${entityName} extends BaseEntity {
+
+    private static final long serialVersionUID = 1L;
+
+#foreach($fieldConfig in ${fieldConfigs})
+    #if(!$fieldConfig.fieldName.equals("id") && !$fieldConfig.fieldName.equals("createTime") && !$fieldConfig.fieldName.equals("updateTime"))
+        #if("$!fieldConfig.fieldComment" != "")
+    /**
+     * ${fieldConfig.fieldComment}
+     */
+        #end
+        #if($fieldConfig.fieldName == "createBy")
+    @TableField(fill = FieldFill.INSERT)
+        #elseif($fieldConfig.fieldName == "updateBy")
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+        #end
+    private ${fieldConfig.fieldType} ${fieldConfig.fieldName};
+    #end
+#end
+}

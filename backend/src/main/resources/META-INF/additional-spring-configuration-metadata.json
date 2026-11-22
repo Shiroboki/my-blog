@@ -1,0 +1,97 @@
+{
+  "properties": [
+    {
+      "name": "xxl.job.enabled",
+      "type": "java.lang.Boolean",
+      "description": "定时任务开关",
+      "defaultValue": false
+    },
+    {
+      "name": "xxl.job.admin.addresses",
+      "type": "java.lang.String",
+      "description": "多个地址使用,分割"
+    },
+    {
+      "name": "xxl.job.accessToken",
+      "type": "java.lang.String",
+      "description": "访问令牌"
+    },
+    {
+      "name": "xxl.job.executor.appname",
+      "type": "java.lang.String",
+      "description": "执行器应用名称"
+    },
+    {
+      "name": "xxl.job.executor.address",
+      "type": "java.lang.String",
+      "description": "执行器地址",
+      "defaultValue": ""
+    },
+    {
+      "name": "xxl.job.executor.ip",
+      "type": "java.lang.String",
+      "description": "执行器IP",
+      "defaultValue": ""
+    },
+    {
+      "name": "xxl.job.executor.port",
+      "type": "java.lang.Integer",
+      "description": "执行器端口",
+      "defaultValue": 9999
+    },
+    {
+      "name": "xxl.job.executor.logpath",
+      "type": "java.lang.String",
+      "description": "日志路径",
+      "defaultValue": "/data/applogs/xxl-job/jobhandler"
+    },
+    {
+      "name": "xxl.job.executor.logretentiondays",
+      "type": "java.lang.Integer",
+      "description": "日志保留天数",
+      "defaultValue": 30
+    },
+    {
+      "name": "security.token.access-token-time-to-live",
+      "defaultValue": "2h"
+    },
+    {
+      "name": "security.token.refresh-token-time-to-live",
+      "defaultValue": "7d"
+    }
+  ],
+  "ignored": {
+    "properties": [
+      {
+        "name": "storage.allowed-extensions"
+      }
+    ]
+  },
+  "hints": [
+    {
+      "name": "storage.type",
+      "values": [
+        {
+          "value": "s3"
+        },
+        {
+          "value": "aliyun"
+        },
+        {
+          "value": "local"
+        }
+      ]
+    },
+    {
+      "name": "security.token.type",
+      "values": [
+        {
+          "value": "jwt"
+        },
+        {
+          "value": "redis-token"
+        }
+      ]
+    }
+  ]
+}

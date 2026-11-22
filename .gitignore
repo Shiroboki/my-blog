@@ -1,0 +1,10 @@
+.env
+.env.local
+backend/target/
+admin/node_modules/
+admin/dist/
+web/node_modules/
+web/dist/
+*.log
+logs/
+.DS_Store

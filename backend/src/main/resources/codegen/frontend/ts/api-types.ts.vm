@@ -1,0 +1,67 @@
+import type { PageQuery } from "@/api/common";
+
+/**
+ * $!{businessName}查询参数
+ */
+export interface ${entityName}Query extends PageQuery {
+#foreach($fieldConfig in $fieldConfigs)
+  #if($fieldConfig.isShowInQuery)
+    #if("$!fieldConfig.fieldComment" != "")
+  /** ${fieldConfig.fieldComment} */
+    #end
+    #if($fieldConfig.formType.name() == "DATE" || $fieldConfig.formType.name() == "DATE_TIME")
+      #if($fieldConfig.queryType.name() == "BETWEEN")
+  ${fieldConfig.fieldName}?: [string, string];
+      #elseif($fieldConfig.queryType.name() == "IN")
+  ${fieldConfig.fieldName}?: string[];
+      #else
+  ${fieldConfig.fieldName}?: ${fieldConfig.tsType};
+      #end
+    #else
+      #if($fieldConfig.queryType.name() == "IN")
+  ${fieldConfig.fieldName}?: string[];
+      #elseif($fieldConfig.queryType.name() == "BETWEEN")
+  ${fieldConfig.fieldName}: [${fieldConfig.tsType} | null, ${fieldConfig.tsType} | null];
+      #else
+  ${fieldConfig.fieldName}?: ${fieldConfig.tsType};
+      #end
+    #end
+  #end
+#end
+}
+
+/**
+ * $!{businessName}表单对象
+ */
+export interface ${entityName}Form {
+  id?: string;
+#foreach($fieldConfig in $fieldConfigs)
+  #if($fieldConfig.isShowInForm && $fieldConfig.fieldName != "id")
+    #if("$!fieldConfig.fieldComment" != "")
+  /** ${fieldConfig.fieldComment} */
+    #end
+  ${fieldConfig.fieldName}?: ${fieldConfig.tsType};
+  #end
+#end
+}
+
+/**
+ * $!{businessName}详情对象
+ */
+export type ${entityName}Detail = ${entityName}Item & ${entityName}Form;
+
+/**
+ * $!{businessName}列表项
+ */
+export interface ${entityName}Item {
+  /** 稳定主键，不受列表显示配置影响 */
+  id: string;
+#foreach($fieldConfig in $fieldConfigs)
+  #if($fieldConfig.isShowInList && $fieldConfig.fieldName != "id")
+    #if("$!fieldConfig.fieldComment" != "")
+  /** ${fieldConfig.fieldComment} */
+    #end
+  ${fieldConfig.fieldName}?: ${fieldConfig.tsType};
+  #end
+#end
+}

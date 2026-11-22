@@ -1,0 +1,756 @@
+package com.youlai.boot.system.service.impl;
+
+import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.lang.Assert;
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.metadata.OrderItem;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.youlai.boot.common.constant.RedisConstants;
+import com.youlai.boot.common.constant.SystemConstants;
+import com.youlai.boot.common.exception.BusinessException;
+import com.youlai.boot.common.model.Option;
+import com.youlai.boot.framework.security.model.RoleDataScope;
+import com.youlai.boot.framework.mybatis.QuerySort;
+import com.youlai.boot.framework.security.model.SecurityUser;
+import com.youlai.boot.framework.security.session.SessionService;
+import com.youlai.boot.framework.security.util.SecurityUtils;
+import com.youlai.boot.support.mail.service.EmailService;
+import com.youlai.boot.support.sms.SmsTypeEnum;
+import com.youlai.boot.support.sms.service.SmsService;
+import com.youlai.boot.system.converter.UserConverter;
+import com.youlai.boot.system.enums.DictCodeEnum;
+import com.youlai.boot.system.mapper.UserMapper;
+import com.youlai.boot.system.mapper.UserIdentityMapper;
+import com.youlai.boot.system.model.form.EmailUpdateForm;
+import com.youlai.boot.system.model.form.MobileUpdateForm;
+import com.youlai.boot.system.model.form.PasswordUpdateForm;
+import com.youlai.boot.system.model.form.PasswordVerifyForm;
+import com.youlai.boot.system.model.form.UserForm;
+import com.youlai.boot.system.model.form.UserProfileForm;
+import com.youlai.boot.system.model.vo.CurrentUserVO;
+import com.youlai.boot.system.model.vo.UserExportVO;
+import com.youlai.boot.system.model.entity.Dept;
+import com.youlai.boot.system.model.entity.DictItem;
+import com.youlai.boot.system.model.entity.Role;
+import com.youlai.boot.system.model.entity.SysUser;
+import com.youlai.boot.system.model.entity.UserIdentity;
+import com.youlai.boot.system.model.query.UserQuery;
+import com.youlai.boot.system.model.vo.UserPageVO;
+import com.youlai.boot.system.model.vo.UserProfileVO;
+import com.youlai.boot.system.service.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+/**
+ * 用户业务实现类.
+ *
+ * @author Ray.Hao
+ * @since 0.0.1
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class UserServiceImpl extends ServiceImpl<UserMapper, SysUser> implements UserService {
+
+    private static final Map<String, String> SORT_FIELDS = Map.of(
+            "id", "u.id",
+            "username", "u.username",
+            "createTime", "u.create_time",
+            "updateTime", "u.update_time"
+    );
+
+    private final PasswordEncoder passwordEncoder;
+
+    private final UserRoleService userRoleService;
+
+    private final UserIdentityMapper userIdentityMapper;
+
+    private final DeptService deptService;
+
+    private final RoleService roleService;
+
+    private final RoleMenuService roleMenuService;
+
+    private final SmsService smsService;
+    private final EmailService emailService;
+
+    private final StringRedisTemplate redisTemplate;
+
+    private final SessionService sessionService;
+
+    private final DictItemService dictItemService;
+
+    private final UserConverter userConverter;
+
+
+    /**
+     * 获取用户分页列表.
+     *
+     * @param queryParams 分页查询条件（含关键字、状态、部门过滤）
+     * @return 用户分页数据（含角色、部门名称）
+     */
+    @Override
+    public IPage<UserPageVO> getUserPage(UserQuery queryParams) {
+        Page<UserPageVO> page = createUserPage(queryParams, queryParams.getPageSize());
+        return this.baseMapper.getUserPage(page, queryParams);
+    }
+
+    /**
+     * 列表与导出使用相同排序，同值时以用户 ID 确定顺序
+     */
+    private <T> Page<T> createUserPage(UserQuery queryParams, long pageSize) {
+        List<OrderItem> orders = QuerySort.parse(queryParams.getSort(), SORT_FIELDS);
+        if (orders.isEmpty()) {
+            orders.add(OrderItem.desc("u.update_time"));
+            orders.add(OrderItem.desc("u.create_time"));
+        }
+        if (orders.stream().noneMatch(order -> "u.id".equals(order.getColumn()))) {
+            orders.add(OrderItem.desc("u.id"));
+        }
+        Page<T> page = new Page<>(queryParams.getPageNum(), pageSize);
+        page.addOrder(orders);
+        return page;
+    }
+
+    /**
+     * 获取用户表单回显数据.
+     *
+     * @param userId 用户 ID
+     * @return 用户表单（含已分配角色 ID 列表），用于编辑页回显
+     */
+    @Override
+    public UserForm getUserFormData(Long userId) {
+        return this.baseMapper.getUserFormData(userId);
+    }
+
+    /**
+     * 新增用户.
+     *
+     * @param userForm 用户表单（username 必填且唯一，roleIds 为角色 ID 列表）
+     * @return 新增成功返回 true
+     * @throws BusinessException 如果用户名已存在
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveUser(UserForm userForm) {
+
+        String username = userForm.getUsername();
+
+        // 实体转换 form->entity
+        SysUser entity = userConverter.toEntity(userForm);
+        // 新增不接受客户端主键，主键由数据库生成
+        entity.setId(null);
+
+        // 检查用户名是否已存在
+        long count = this.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, username));
+        Assert.isTrue(count == 0, "用户名已存在");
+
+        // 设置默认加密密码
+        String defaultEncryptPwd = passwordEncoder.encode(SystemConstants.DEFAULT_PASSWORD);
+        entity.setPassword(defaultEncryptPwd);
+
+        // 新增用户
+        boolean result = this.save(entity);
+
+        if (result) {
+            // 保存用户角色
+            userRoleService.replaceUserRoles(entity.getId(), userForm.getRoleIds());
+        }
+        return result;
+    }
+
+    /**
+     * 更新用户.
+     *
+     * @param userId   用户 ID
+     * @param userForm 用户表单（username 必填且唯一，roleIds 为角色 ID 列表）
+     * @return 更新成功返回 true
+     * @throws BusinessException 如果用户不存在或用户名已被占用
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateUser(Long userId, UserForm userForm) {
+
+        String username = userForm.getUsername();
+
+        // 获取原用户信息
+        SysUser oldUser = this.getById(userId);
+        Assert.notNull(oldUser, "用户不存在");
+
+        // 检查用户名是否已存在（排除当前用户）
+        long count = this.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, username)
+                .ne(SysUser::getId, userId)
+        );
+        Assert.isTrue(count == 0, "用户名已存在");
+
+        // form -> entity
+        SysUser entity = userConverter.toEntity(userForm);
+        // 更新目标由路径 ID 决定，忽略 Body 传入的 ID
+        entity.setId(userId);
+
+        // 修改用户
+        boolean result = this.updateById(entity);
+
+        if (result) {
+            boolean rolesChanged = userRoleService.replaceUserRoles(userId, userForm.getRoleIds());
+            boolean identityChanged = entity.getUsername() != null && !Objects.equals(oldUser.getUsername(), entity.getUsername())
+                    || entity.getDeptId() != null && !Objects.equals(oldUser.getDeptId(), entity.getDeptId())
+                    || entity.getStatus() != null && !Objects.equals(oldUser.getStatus(), entity.getStatus());
+            if (rolesChanged || identityChanged) sessionService.revokeUserSessions(userId);
+        }
+        return result;
+    }
+
+    /**
+     * 批量删除用户.
+     *
+     * @param idsStr 用户 ID，多个以英文逗号分割
+     * @return 删除成功返回 true
+     * @throws BusinessException 如果 idsStr 为空
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteUsers(String idsStr) {
+        Assert.isTrue(StrUtil.isNotBlank(idsStr), "删除的用户数据为空");
+        // 逻辑删除
+        List<Long> ids = Arrays.stream(idsStr.split(","))
+                .map(Long::parseLong)
+                .collect(Collectors.toList());
+
+        boolean result = this.removeByIds(ids);
+        if (result) {
+            // 删除用户同时释放外部账号关联，避免唯一键永久占用已删除用户的身份
+            userIdentityMapper.delete(new LambdaQueryWrapper<UserIdentity>().in(UserIdentity::getUserId, ids));
+            ids.forEach(sessionService::revokeUserSessions);
+        }
+        return result;
+    }
+
+    /**
+     * 根据用户名获取认证凭证信息.
+     *
+     * @param username 用户名（唯一）
+     * @return 认证凭证，用户不存在时返回 null
+     */
+    @Override
+    public SecurityUser getAuthInfoByUsername(String username) {
+        SecurityUser securityUser = this.baseMapper.getAuthInfoByUsername(username);
+        if (securityUser != null) {
+            Set<String> roles = securityUser.getRoles();
+            List<RoleDataScope> dataScopes = roleService.getRoleDataScopes(roles);
+            securityUser.setDataScopes(dataScopes);
+        }
+        return securityUser;
+    }
+
+    /**
+     * 根据手机号获取认证凭证信息.
+     *
+     * @param mobile 手机号
+     * @return 认证凭证，手机号为空或用户不存在时返回 null
+     */
+    @Override
+    public SecurityUser getAuthInfoByMobile(String mobile) {
+        if (StrUtil.isBlank(mobile)) {
+            return null;
+        }
+        SecurityUser securityUser = this.baseMapper.getAuthInfoByMobile(mobile);
+        if (securityUser != null) {
+            Set<String> roles = securityUser.getRoles();
+            List<RoleDataScope> dataScopes = roleService.getRoleDataScopes(roles);
+            securityUser.setDataScopes(dataScopes);
+        }
+        return securityUser;
+    }
+
+    /**
+     * 获取导出用户列表.
+     *
+     * @param queryParams 查询条件（含关键字、状态、部门过滤）
+     * @return 导出用户列表（gender 字段已翻译为中文）
+     */
+    @Override
+    public List<UserExportVO> listExportUsers(UserQuery queryParams) {
+
+        Page<UserExportVO> page = createUserPage(queryParams, -1);
+        List<UserExportVO> exportUsers = this.baseMapper.listExportUsers(page, queryParams);
+        if (CollectionUtil.isNotEmpty(exportUsers)) {
+            //获取性别的字典项
+            Map<String, String> genderMap = dictItemService.list(
+                            new LambdaQueryWrapper<DictItem>().eq(DictItem::getDictCode,
+                                    DictCodeEnum.GENDER.getValue())
+                    ).stream()
+                    .collect(Collectors.toMap(DictItem::getValue, DictItem::getLabel)
+                    );
+
+            exportUsers.forEach(item -> {
+                String gender = item.getGender();
+                if (StrUtil.isBlank(gender)) {
+                    return;
+                }
+
+                // 判断map是否为空
+                if (genderMap.isEmpty()) {
+                    return;
+                }
+
+                item.setGender(genderMap.get(gender));
+            });
+        }
+        return exportUsers;
+    }
+
+    /**
+     * 获取当前登录用户信息.
+     *
+     * @return 当前用户信息（含角色、权限）
+     */
+    @Override
+    public CurrentUserVO getCurrentUserInfo() {
+
+        String username = SecurityUtils.getUsername();
+
+        // 获取登录用户基础信息
+        SysUser user = this.getOne(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, username)
+                .select(
+                        SysUser::getId,
+                        SysUser::getUsername,
+                        SysUser::getNickname,
+                        SysUser::getAvatar,
+                        SysUser::getGender,
+                        SysUser::getDeptId
+                )
+        );
+        // entity->Vo
+        CurrentUserVO userInfoVo = userConverter.toCurrentUserVo(user);
+
+        // 性别
+        userInfoVo.setGender(user.getGender());
+
+        // 部门名称
+        if (user.getDeptId() != null) {
+            Dept dept = deptService.getById(user.getDeptId());
+            if (dept != null) {
+                userInfoVo.setDeptName(dept.getName());
+            }
+        }
+
+        // 用户角色集合
+        Set<String> roles = SecurityUtils.getRoles();
+        userInfoVo.setRoles(roles);
+
+        // 用户角色名称集合
+        if (CollectionUtil.isNotEmpty(roles)) {
+            Set<String> roleNames = roleService.list(new LambdaQueryWrapper<Role>()
+                            .in(Role::getCode, roles)
+                            .select(Role::getName)
+                    ).stream()
+                    .map(Role::getName)
+                    .filter(StrUtil::isNotBlank)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            userInfoVo.setRoleNames(roleNames);
+        }
+
+        // 用户权限集合
+        if (CollectionUtil.isNotEmpty(roles)) {
+            Set<String> perms = roleMenuService.getRolePermsByRoleCodes(roles);
+            // 缓存未命中时触发全量刷新（防止 DB 数据已更新但缓存未同步）
+            if (CollectionUtil.isEmpty(perms)) {
+                roleMenuService.refreshRolePermsCache();
+                perms = roleMenuService.getRolePermsByRoleCodes(roles);
+            }
+            userInfoVo.setPerms(perms);
+        }
+        return userInfoVo;
+    }
+
+    /**
+     * 获取个人中心用户信息.
+     *
+     * @param userId 用户 ID
+     * @return 个人中心信息（含角色、部门名称）
+     */
+    @Override
+    public UserProfileVO getUserProfile(Long userId) {
+        return this.baseMapper.getUserProfile(userId);
+    }
+
+    /**
+     * 修改个人中心用户信息.
+     *
+     * @param formData 个人中心表单（nickname/avatar/gender 至少一个非空）
+     * @return 修改成功返回 true
+     * @throws BusinessException 如果所有字段均为空
+     */
+    @Override
+    public boolean updateUserProfile(UserProfileForm formData) {
+        Long userId = SecurityUtils.getUserId();
+
+        if (formData.getNickname() == null && formData.getAvatar() == null && formData.getGender() == null) {
+            throw new BusinessException("请修改至少一个字段");
+        }
+
+        return this.update(new LambdaUpdateWrapper<SysUser>()
+                .eq(SysUser::getId, userId)
+                .set(formData.getNickname() != null, SysUser::getNickname, formData.getNickname())
+                .set(formData.getAvatar() != null, SysUser::getAvatar, formData.getAvatar())
+                .set(formData.getGender() != null, SysUser::getGender, formData.getGender())
+        );
+    }
+
+    /**
+     * 修改当前用户密码.
+     *
+     * @param userId 用户 ID
+     * @param data   密码表单（含原密码、新密码、确认密码）
+     * @return 修改成功返回 true
+     * @throws BusinessException 如果用户不存在、原密码错误、新旧密码相同或确认密码不一致
+     */
+    @Override
+    public boolean changeUserPassword(Long userId, PasswordUpdateForm data) {
+
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        String oldPassword = data.getOldPassword();
+
+        // 校验原密码
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            throw new BusinessException("原密码错误");
+        }
+        // 新旧密码不能相同
+        if (passwordEncoder.matches(data.getNewPassword(), user.getPassword())) {
+            throw new BusinessException("新密码不能与原密码相同");
+        }
+
+        // 判断新密码和确认密码是否一致
+        if (!Objects.equals(data.getNewPassword(), data.getConfirmPassword())) {
+            throw new BusinessException("新密码和确认密码不一致");
+        }
+
+        String newPassword = data.getNewPassword();
+        boolean result = this.update(new LambdaUpdateWrapper<SysUser>()
+                .eq(SysUser::getId, userId)
+                .set(SysUser::getPassword, passwordEncoder.encode(newPassword))
+        );
+
+        if (result) {
+            // 密码变更后，使当前用户的所有会话失效，强制重新登录
+            sessionService.revokeUserSessions(userId);
+        }
+        return result;
+    }
+
+    /**
+     * 重置用户密码.
+     *
+     * @param userId   用户 ID
+     * @param password 新密码（明文，内部加密存储）
+     * @return 重置成功返回 true
+     */
+    @Override
+    public boolean resetUserPassword(Long userId, String password) {
+        boolean result = this.update(new LambdaUpdateWrapper<SysUser>()
+                .eq(SysUser::getId, userId)
+                .set(SysUser::getPassword, passwordEncoder.encode(password))
+        );
+        if (result) {
+            // 管理员重置用户密码后，使该用户的所有会话失效
+            sessionService.revokeUserSessions(userId);
+        }
+        return result;
+    }
+
+    /**
+     * 发送短信验证码（绑定或更换手机号）.
+     *
+     * @param mobile 手机号
+     * @return 发送成功返回 true，失败返回 false 并记录日志
+     * @throws BusinessException 如果手机号已被其他账号绑定
+     */
+    @Override
+    public boolean sendMobileCode(String mobile) {
+
+        Long currentUserId = SecurityUtils.getUserId();
+        long mobileCount = this.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getMobile, mobile)
+                .ne(SysUser::getId, currentUserId)
+        );
+        if (mobileCount > 0) {
+            throw new BusinessException("手机号已被其他账号绑定");
+        }
+
+        // TODO 固定验证码 123456 便于测试，接入短信厂商后改为随机生成
+        String code = "123456";
+
+        Map<String, String> templateParams = new HashMap<>();
+        templateParams.put("code", code);
+        boolean result = true;
+        try {
+            smsService.send(mobile, SmsTypeEnum.CHANGE_MOBILE, templateParams);
+        } catch (Exception e) {
+            result = false;
+            log.error("发送短信验证码失败", e);
+        }
+        if (result) {
+            // 缓存验证码，5分钟有效，用于更换手机号校验
+            String redisCacheKey = StrUtil.format(RedisConstants.Captcha.MOBILE_CODE, mobile);
+            redisTemplate.opsForValue().set(redisCacheKey, code, 5, TimeUnit.MINUTES);
+        }
+        return result;
+    }
+
+    /**
+     * 绑定或更换手机号.
+     *
+     * @param form 手机号绑定表单（含密码、手机号、验证码）
+     * @return 绑定成功返回 true
+     * @throws BusinessException 如果用户不存在、密码错误、验证码过期/错误或手机号已被绑定
+     */
+    @Override
+    public boolean bindOrChangeMobile(MobileUpdateForm form) {
+
+        Long currentUserId = SecurityUtils.getUserId();
+        SysUser currentUser = this.getById(currentUserId);
+
+        if (currentUser == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        if (!passwordEncoder.matches(form.getPassword(), currentUser.getPassword())) {
+            throw new BusinessException("当前密码错误");
+        }
+
+        // 校验验证码
+        String inputVerifyCode = form.getCode();
+        String mobile = form.getMobile();
+
+        String cacheKey = StrUtil.format(RedisConstants.Captcha.MOBILE_CODE, mobile);
+
+        String cachedVerifyCode = redisTemplate.opsForValue().get(cacheKey);
+
+        if (StrUtil.isBlank(cachedVerifyCode)) {
+            throw new BusinessException("验证码已过期");
+        }
+        if (!inputVerifyCode.equals(cachedVerifyCode)) {
+            throw new BusinessException("验证码错误");
+        }
+
+        long mobileCount = this.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getMobile, mobile)
+                .ne(SysUser::getId, currentUserId)
+        );
+        if (mobileCount > 0) {
+            throw new BusinessException("手机号已被其他账号绑定");
+        }
+
+        redisTemplate.delete(cacheKey);
+
+        // 更新手机号码
+        return this.update(
+                new LambdaUpdateWrapper<SysUser>()
+                        .eq(SysUser::getId, currentUserId)
+                        .set(SysUser::getMobile, mobile)
+        );
+    }
+
+    /**
+     * 发送邮箱验证码（绑定或更换邮箱）.
+     *
+     * @param email 邮箱地址
+     * @throws BusinessException 如果邮箱已被其他账号绑定
+     */
+    @Override
+    public void sendEmailCode(String email) {
+
+        Long currentUserId = SecurityUtils.getUserId();
+        long emailCount = this.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getEmail, email)
+                .ne(SysUser::getId, currentUserId)
+        );
+        if (emailCount > 0) {
+            throw new BusinessException("邮箱已被其他账号绑定");
+        }
+
+        // TODO 固定验证码 123456 便于测试，接入邮箱服务后改为随机生成
+        String code = "123456";
+
+        emailService.send(email, "邮箱验证码", "您的验证码为：" + code + "，请在5分钟内使用");
+        // 缓存验证码，5分钟有效，用于更换邮箱校验
+        String redisCacheKey = StrUtil.format(RedisConstants.Captcha.EMAIL_CODE, email);
+        redisTemplate.opsForValue().set(redisCacheKey, code, 5, TimeUnit.MINUTES);
+    }
+
+    /**
+     * 绑定或更换邮箱.
+     *
+     * @param form 邮箱绑定表单（含密码、邮箱、验证码）
+     * @return 绑定成功返回 true
+     * @throws BusinessException 如果用户不存在、密码错误、验证码过期/错误或邮箱已被绑定
+     */
+    @Override
+    public boolean bindOrChangeEmail(EmailUpdateForm form) {
+
+        Long currentUserId = SecurityUtils.getUserId();
+
+        SysUser currentUser = this.getById(currentUserId);
+        if (currentUser == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        if (!passwordEncoder.matches(form.getPassword(), currentUser.getPassword())) {
+            throw new BusinessException("当前密码错误");
+        }
+
+        // 获取前端输入的验证码
+        String inputVerifyCode = form.getCode();
+
+        // 获取缓存的验证码
+        String email = form.getEmail();
+        String redisCacheKey = StrUtil.format(RedisConstants.Captcha.EMAIL_CODE, email);
+        String cachedVerifyCode = redisTemplate.opsForValue().get(redisCacheKey);
+
+        if (StrUtil.isBlank(cachedVerifyCode)) {
+            throw new BusinessException("验证码已过期");
+        }
+
+        if (!inputVerifyCode.equals(cachedVerifyCode)) {
+            throw new BusinessException("验证码错误");
+        }
+
+        long emailCount = this.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getEmail, email)
+                .ne(SysUser::getId, currentUserId)
+        );
+        if (emailCount > 0) {
+            throw new BusinessException("邮箱已被其他账号绑定");
+        }
+
+        redisTemplate.delete(redisCacheKey);
+
+        // 更新邮箱地址
+        return this.update(
+                new LambdaUpdateWrapper<SysUser>()
+                        .eq(SysUser::getId, currentUserId)
+                        .set(SysUser::getEmail, email)
+        );
+    }
+
+    /**
+     * 解绑手机号.
+     *
+     * @param form 密码验证表单（含密码）
+     * @return 解绑成功返回 true
+     * @throws BusinessException 如果用户不存在、未绑定手机号或密码错误
+     */
+    @Override
+    public boolean unbindMobile(PasswordVerifyForm form) {
+
+        Long currentUserId = SecurityUtils.getUserId();
+        SysUser currentUser = this.getById(currentUserId);
+
+        if (currentUser == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        if (StrUtil.isBlank(currentUser.getMobile())) {
+            throw new BusinessException("当前账号未绑定手机号");
+        }
+
+        if (!passwordEncoder.matches(form.getPassword(), currentUser.getPassword())) {
+            throw new BusinessException("当前密码错误");
+        }
+
+        return this.update(new LambdaUpdateWrapper<SysUser>()
+                .eq(SysUser::getId, currentUserId)
+                .set(SysUser::getMobile, null)
+        );
+    }
+
+    /**
+     * 解绑邮箱.
+     *
+     * @param form 密码验证表单（含密码）
+     * @return 解绑成功返回 true
+     * @throws BusinessException 如果用户不存在、未绑定邮箱或密码错误
+     */
+    @Override
+    public boolean unbindEmail(PasswordVerifyForm form) {
+
+        Long currentUserId = SecurityUtils.getUserId();
+        SysUser currentUser = this.getById(currentUserId);
+
+        if (currentUser == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        if (StrUtil.isBlank(currentUser.getEmail())) {
+            throw new BusinessException("当前账号未绑定邮箱");
+        }
+
+        if (!passwordEncoder.matches(form.getPassword(), currentUser.getPassword())) {
+            throw new BusinessException("当前密码错误");
+        }
+
+        return this.update(new LambdaUpdateWrapper<SysUser>()
+                .eq(SysUser::getId, currentUserId)
+                .set(SysUser::getEmail, null)
+        );
+    }
+
+    /**
+     * 修改用户状态.
+     *
+     * @param userId 用户 ID
+     * @param status 状态（1:启用 0:禁用）
+     * @return 修改成功返回 true
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateUserStatus(Long userId, Integer status) {
+        boolean updated = this.update(new LambdaUpdateWrapper<SysUser>()
+                .eq(SysUser::getId, userId)
+                .set(SysUser::getStatus, status)
+        );
+        if (updated && !Integer.valueOf(1).equals(status)) sessionService.revokeUserSessions(userId);
+        return updated;
+    }
+
+    /**
+     * 获取用户下拉选项列表.
+     *
+     * @return 启用状态的用户选项（value 为用户 ID，label 为昵称）
+     */
+    @Override
+    public List<Option<String>> listUserOptions() {
+        List<SysUser> list = this.list(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getStatus, 1)
+        );
+        return userConverter.toOptions(list);
+    }
+
+
+}

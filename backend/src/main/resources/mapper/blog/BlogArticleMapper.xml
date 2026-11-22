@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.youlai.boot.module.blog.mapper.BlogArticleMapper">
+
+    <select id="getArticlePage" resultType="com.youlai.boot.module.blog.model.vo.BlogArticlePageVO">
+        SELECT
+            a.id,
+            a.title,
+            a.slug,
+            a.summary,
+            a.cover_image,
+            a.category_id,
+            c.name AS category_name,
+            a.status,
+            a.is_top,
+            a.allow_comment,
+            a.view_count,
+            a.like_count,
+            (
+                SELECT COUNT(1)
+                FROM blog_comment bc
+                WHERE bc.article_id = a.id
+                  AND bc.status = 1
+                  AND bc.is_deleted = 0
+            ) AS comment_count,
+            CHAR_LENGTH(a.content) AS word_count,
+            a.publish_time,
+            a.create_time,
+            a.update_time
+        FROM blog_article a
+        LEFT JOIN blog_category c ON c.id = a.category_id AND c.is_deleted = 0
+        <where>
+            a.is_deleted = 0
+            <if test="onlyPublished">
+                AND a.status = 1
+            </if>
+            <if test="!onlyPublished and queryParams.status != null">
+                AND a.status = #{queryParams.status}
+            </if>
+            <if test="queryParams.categoryId != null">
+                AND a.category_id = #{queryParams.categoryId}
+            </if>
+            <if test="queryParams.tagId != null">
+                AND EXISTS (
+                    SELECT 1
+                    FROM blog_article_tag bat
+                    WHERE bat.article_id = a.id
+                      AND bat.tag_id = #{queryParams.tagId}
+                )
+            </if>
+            <if test='queryParams.keywords != null and queryParams.keywords.trim() neq ""'>
+                AND (
+                    a.title LIKE CONCAT('%', #{queryParams.keywords}, '%')
+                    OR a.summary LIKE CONCAT('%', #{queryParams.keywords}, '%')
+                    OR a.content LIKE CONCAT('%', #{queryParams.keywords}, '%')
+                )
+            </if>
+        </where>
+        ORDER BY a.is_top DESC, COALESCE(a.publish_time, a.create_time) DESC, a.id DESC
+    </select>
+
+    <update id="incrementViewCount">
+        UPDATE blog_article
+        SET view_count = view_count + 1
+        WHERE id = #{id}
+          AND is_deleted = 0
+    </update>
+
+    <update id="incrementLikeCount">
+        UPDATE blog_article
+        SET like_count = like_count + 1
+        WHERE id = #{id}
+          AND status = 1
+          AND is_deleted = 0
+    </update>
+
+    <select id="sumPublishedViews" resultType="java.lang.Long">
+        SELECT COALESCE(SUM(view_count), 0)
+        FROM blog_article
+        WHERE status = 1
+          AND is_deleted = 0
+    </select>
+
+    <select id="listHotArticles" resultType="com.youlai.boot.module.blog.model.vo.BlogHotArticleVO">
+        SELECT
+            id,
+            title,
+            view_count,
+            publish_time
+        FROM blog_article
+        WHERE status = 1
+          AND is_deleted = 0
+        ORDER BY view_count DESC, publish_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listPublishedArchives" resultType="com.youlai.boot.module.blog.model.vo.BlogArchiveArticleVO">
+        SELECT
+            a.id,
+            a.title,
+            c.name AS category_name,
+            COALESCE(a.publish_time, a.create_time) AS publish_time
+        FROM blog_article a
+        LEFT JOIN blog_category c ON c.id = a.category_id AND c.is_deleted = 0
+        WHERE a.status = 1
+          AND a.is_deleted = 0
+        ORDER BY COALESCE(a.publish_time, a.create_time) DESC, a.id DESC
+    </select>
+</mapper>

@@ -139,10 +139,17 @@ onMounted(async () => {
 .link-monogram {
   width: 52px;
   height: 52px;
-  border-radius: 16px;
+  border-radius: var(--radius-dock);
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+@supports (corner-shape: squircle) {
+  .link-avatar,
+  .link-monogram {
+    corner-shape: squircle;
+  }
 }
 
 .link-avatar {

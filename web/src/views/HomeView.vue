@@ -1,14 +1,67 @@
 <template>
-  <div class="home-page">
+  <div ref="homePageRef" class="home-page" :class="{ 'is-morph-returning': isReturningToHome }">
+    <!-- 顶部出版物式个人序言带（Masthead） -->
+    <header v-if="siteInfo" class="masthead" :class="{ 'animate-rise': !skipRiseOnRestore }">
+      <div class="masthead-left">
+        <RouterLink to="/about" class="masthead-avatar-wrap" aria-label="关于博主">
+          <img
+            v-if="siteInfo.authorAvatar"
+            :src="siteInfo.authorAvatar"
+            :alt="siteInfo.authorName"
+            class="masthead-avatar"
+          />
+          <span v-else class="masthead-avatar masthead-avatar--fallback">
+            {{ (siteInfo.authorName || "M").slice(0, 1) }}
+          </span>
+        </RouterLink>
+
+        <div class="masthead-intro">
+          <div class="masthead-kicker">
+            <span class="masthead-author">{{ siteInfo.authorName }}</span>
+            <span class="masthead-sep" aria-hidden="true">/</span>
+            <span class="masthead-sub">
+              {{ siteInfo.siteSubtitle || "全栈工程与思考记录" }}
+            </span>
+          </div>
+          <h1 class="masthead-title">{{ siteInfo.siteTitle || "MyBlog" }}</h1>
+          <p v-if="siteInfo.authorBio" class="masthead-bio">{{ siteInfo.authorBio }}</p>
+        </div>
+      </div>
+
+      <div class="masthead-right">
+        <div class="masthead-metrics">
+          <span><strong>{{ siteInfo.articleCount }}</strong> 篇文章</span>
+          <span class="metric-dot" aria-hidden="true" />
+          <span><strong>{{ siteInfo.totalViews }}</strong> 次阅读</span>
+          <span class="metric-dot" aria-hidden="true" />
+          <span><strong>{{ siteInfo.tagCount }}</strong> 个标签</span>
+        </div>
+        <div class="masthead-links">
+          <RouterLink to="/archives" class="masthead-link">时间线</RouterLink>
+          <RouterLink to="/about" class="masthead-link">关于博主</RouterLink>
+          <a
+            v-if="siteInfo.githubUrl"
+            :href="siteInfo.githubUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="masthead-link"
+          >
+            {{ siteInfo.githubUrl.includes("gitee") ? "Gitee" : "GitHub" }}
+          </a>
+        </div>
+      </div>
+    </header>
+
     <div class="home-grid">
-      <!-- 左侧内容区：统一筛选胶囊 + 主视觉焦点文章 + 精致文章网格 -->
+      <!-- 左侧主阅读流：筛选条 + 精选头条 + 线性编辑文章流 -->
       <section class="feed-col">
         <div ref="dockSentinelRef" class="dock-sentinel" aria-hidden="true" />
+
         <div class="filter-dock card" :class="{ 'is-stuck': isDockStuck }">
           <div class="dock-cats" role="tablist" aria-label="文章分类筛选">
             <button
               type="button"
-              class="pill"
+              class="filter-tab"
               :class="{ active: !activeCategoryId && !activeTagId }"
               @click="clearCategory"
             >
@@ -18,66 +71,80 @@
               v-for="cat in categories"
               :key="cat.id"
               type="button"
-              class="pill"
+              class="filter-tab"
               :class="{ active: activeCategoryId === cat.id }"
               @click="selectCategory(cat.id)"
             >
-              {{ cat.name }} · {{ cat.articleCount }}
+              <span>{{ cat.name }}</span>
+              <span class="tab-count">{{ cat.articleCount }}</span>
             </button>
             <button
               v-if="activeTagObj"
               type="button"
-              class="pill inline-tag-filter"
+              class="filter-tab inline-tag-filter"
               title="点击取消标签筛选"
               @click="selectTag(activeTagObj.id)"
             >
-              <span
-                v-if="activeTagObj.color"
-                class="tag-dot"
-                :style="{ backgroundColor: activeTagObj.color }"
-              />
-              <span>标签：{{ activeTagObj.name }}</span>
+              <span>#{{ activeTagObj.name }}</span>
               <span class="filter-dismiss">取消</span>
             </button>
           </div>
 
-          <div class="search-capsule">
-            <span class="search-icon">搜索</span>
-            <input
-              ref="searchInputRef"
-              v-model="keywords"
-              type="text"
-              class="search-input"
-              placeholder="标题、摘要或正文（按 / 聚焦）"
-              @keyup.enter="handleSearch"
-            />
+          <div
+            ref="searchBoxRef"
+            class="search-capsule"
+            :class="{ 'is-expanded': searchExpanded }"
+            @click="!searchExpanded && openSearch()"
+          >
+            <div class="search-expand-inner">
+              <input
+                ref="searchInputRef"
+                v-model="keywords"
+                type="text"
+                class="search-input"
+                placeholder="标题、摘要或正文（/）"
+                :tabindex="searchExpanded ? 0 : -1"
+                @keyup.enter="handleSearch"
+              />
+              <button
+                v-if="keywords"
+                type="button"
+                class="clear-btn"
+                title="清空搜索"
+                @click.stop="clearKeywords"
+              >
+                清空
+              </button>
+            </div>
+
             <button
-              v-if="keywords"
               type="button"
-              class="clear-btn"
-              title="清空搜索"
-              @click="clearKeywords"
+              class="search-circle-btn"
+              :aria-expanded="searchExpanded"
+              :title="searchExpanded ? '执行搜索' : '展开搜索（/）'"
+              :aria-label="searchExpanded ? '执行搜索' : '展开搜索'"
+              @click.stop="handleSearchButtonClick"
             >
-              清空
-            </button>
-            <button type="button" class="btn btn-primary search-submit" @click="handleSearch">
-              搜索
+              <svg viewBox="0 0 24 24" class="search-circle-icon" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="20" y1="20" x2="16.65" y2="16.65" />
+              </svg>
             </button>
           </div>
         </div>
 
-        <!-- 骨架屏闪烁加载 -->
+        <!-- 骨架屏 -->
         <template v-if="loading">
-          <div class="card skeleton-card skeleton-card--featured">
-            <div class="skeleton-line w-1/3" />
+          <div class="card skeleton-lead">
+            <div class="skeleton-line w-1/4" />
             <div class="skeleton-line w-3/4 h-lg" />
             <div class="skeleton-line w-full" />
             <div class="skeleton-line w-2/3" />
           </div>
-          <div class="article-grid is-two-col">
-            <div v-for="n in 2" :key="n" class="card skeleton-card">
-              <div class="skeleton-line w-1/3" />
-              <div class="skeleton-line w-3/4 h-lg" />
+          <div class="skeleton-feed">
+            <div v-for="n in 3" :key="n" class="skeleton-row">
+              <div class="skeleton-line w-1/4" />
+              <div class="skeleton-line w-2/3 h-lg" />
               <div class="skeleton-line w-full" />
             </div>
           </div>
@@ -94,181 +161,190 @@
         </div>
 
         <template v-else>
-          <!-- 第一视觉重心：焦点大图/焦点导读主卡（无筛选第一页置顶展示） -->
+          <!-- 精选头条（无筛选第1页第1篇）：克制纸感主卡，去掉多余方格嵌套 -->
           <article
             v-if="featuredArticle"
-            class="featured-card card card-interactive animate-rise"
-            @pointermove="onPointerMove"
+            data-morph-card="feed"
+            :data-article-id="featuredArticle.id"
+            class="featured-lead card card-interactive"
+            :class="{
+              'has-cover': Boolean(featuredArticle.coverImage),
+              'animate-rise': !skipRiseOnRestore,
+              'is-morph-hidden':
+                hiddenHomeArticleId === featuredArticle.id && hiddenHomeOriginKind === 'feed',
+            }"
+            :style="{ '--stagger': 0 }"
+            @pointerenter="warmupArticle(featuredArticle.id)"
+            @click.capture="captureOriginOnCardClick(featuredArticle, 'feed', $event)"
           >
-            <div class="featured-main">
-              <div class="featured-eyebrow">
-                <span class="featured-badge">
-                  <span class="featured-dot" />
-                  <span>{{ featuredArticle.isTop === 1 ? "置顶精选" : "最新焦点" }}</span>
+            <div class="lead-main">
+              <div class="lead-meta">
+                <span class="lead-badge">
+                  {{ featuredArticle.isTop === 1 ? "置顶精选" : "最新推荐" }}
                 </span>
-                <button
-                  v-if="featuredArticle.categoryName && featuredArticle.categoryId"
-                  type="button"
-                  class="pill"
-                  @click="selectCategory(featuredArticle.categoryId)"
-                >
-                  {{ featuredArticle.categoryName }}
-                </button>
-                <span class="date-text">
+                <span class="mono-meta">
                   {{ formatDate(featuredArticle.publishTime || featuredArticle.createTime) }}
                 </span>
+                <template v-if="featuredArticle.categoryName && featuredArticle.categoryId">
+                  <span class="meta-dot" aria-hidden="true">·</span>
+                  <button
+                    type="button"
+                    class="inline-cat-btn"
+                    @click="selectCategory(featuredArticle.categoryId)"
+                  >
+                    {{ featuredArticle.categoryName }}
+                  </button>
+                </template>
+                <span class="meta-dot" aria-hidden="true">·</span>
+                <span class="mono-meta">约 {{ featuredArticle.readingMinutes || 1 }} 分钟阅读</span>
+                <span v-if="!featuredArticle.coverImage" class="lead-issue">NO. 01</span>
               </div>
 
-              <h1 class="featured-title">
+              <h2 class="lead-title">
                 <RouterLink :to="`/article/${featuredArticle.id}`">
                   {{ featuredArticle.title }}
                 </RouterLink>
-              </h1>
+              </h2>
 
-              <p v-if="featuredArticle.summary" class="featured-summary">
+              <p v-if="featuredArticle.summary" class="lead-summary">
                 {{ featuredArticle.summary }}
               </p>
 
-              <div class="featured-footer">
-                <div class="tag-row">
+              <div class="lead-footer">
+                <div class="hash-tags">
                   <button
                     v-for="tag in featuredArticle.tags || []"
                     :key="tag.id"
                     type="button"
-                    class="pill"
+                    class="hash-tag-btn"
                     @click="selectTag(tag.id)"
                   >
-                    <span
-                      v-if="tag.color"
-                      class="tag-dot"
-                      :style="{ backgroundColor: tag.color }"
-                    />
-                    <span>{{ tag.name }}</span>
+                    #{{ tag.name }}
                   </button>
                 </div>
 
-                <RouterLink :to="`/article/${featuredArticle.id}`" class="btn btn-primary featured-cta">
-                  阅读全文
-                </RouterLink>
+                <div class="lead-footer-right">
+                  <span class="mono-stat">阅读 {{ featuredArticle.viewCount ?? 0 }}</span>
+                  <RouterLink :to="`/article/${featuredArticle.id}`" class="editorial-read-link">
+                    <span>阅读全文</span>
+                    <svg viewBox="0 0 24 24" class="arrow-icon" aria-hidden="true">
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                      <polyline points="12 5 19 12 12 19" />
+                    </svg>
+                  </RouterLink>
+                </div>
               </div>
             </div>
 
             <RouterLink
+              v-if="featuredArticle.coverImage"
               :to="`/article/${featuredArticle.id}`"
-              class="featured-visual"
+              class="lead-cover"
               :aria-label="featuredArticle.title"
             >
-              <div v-if="featuredArticle.coverImage" class="featured-cover-box">
-                <img :src="featuredArticle.coverImage" :alt="featuredArticle.title" />
-                <span class="cover-reading-badge">
-                  约 {{ featuredArticle.readingMinutes || 1 }} 分钟阅读
-                </span>
-              </div>
-              <div v-else class="featured-plaque">
-                <div class="plaque-head">
-                  <span class="plaque-kicker">导读概览</span>
-                  <span class="plaque-num">01</span>
-                </div>
-                <div class="plaque-metrics">
-                  <div class="plaque-cell">
-                    <strong>{{ featuredArticle.wordCount ?? 0 }}</strong>
-                    <span>总字数</span>
-                  </div>
-                  <div class="plaque-cell">
-                    <strong>{{ featuredArticle.readingMinutes || 1 }} 分</strong>
-                    <span>预计阅读</span>
-                  </div>
-                  <div class="plaque-cell">
-                    <strong>{{ featuredArticle.viewCount ?? 0 }}</strong>
-                    <span>浏览</span>
-                  </div>
-                  <div class="plaque-cell">
-                    <strong>{{ Number(featuredArticle.likeCount ?? 0) + Number(featuredArticle.commentCount ?? 0) }}</strong>
-                    <span>赞与评</span>
-                  </div>
-                </div>
-              </div>
+              <img :src="featuredArticle.coverImage" :alt="featuredArticle.title" loading="lazy" />
             </RouterLink>
           </article>
 
-          <!-- 次级文章流：超过1篇自动切换均衡双列杂志网格，单篇全宽呼应不留白 -->
-          <div
-            v-if="streamArticles.length"
-            class="article-grid"
-            :class="{ 'is-two-col': streamArticles.length >= 2 }"
-          >
-            <article
-              v-for="(item, idx) in streamArticles"
-              :key="item.id"
-              class="article-card card card-interactive animate-rise"
-              :style="{ '--stagger': idx + 1 }"
-              @pointermove="onPointerMove"
-            >
-              <RouterLink v-if="item.coverImage" :to="`/article/${item.id}`" class="article-cover">
-                <img :src="item.coverImage" :alt="item.title" loading="lazy" />
-              </RouterLink>
+          <!-- 极简线性编辑文章列表（Clean Editorial Feed） -->
+          <section v-if="streamArticles.length" class="editorial-feed">
+            <div class="feed-section-head">
+              <span class="feed-section-label">
+                {{ showSpotlight ? "近期文章" : hasAnyFilter ? "筛选结果" : "全部文章" }}
+              </span>
+              <span class="feed-section-count">
+                {{ formatOrdinal(streamArticles.length) }} 篇
+              </span>
+            </div>
 
-              <div class="article-body">
-                <div class="article-meta-top">
-                  <span class="article-ordinal">
-                    {{ formatOrdinal(showSpotlight ? idx + 2 : idx + 1) }}
-                  </span>
-                  <span v-if="item.isTop === 1" class="top-badge">置顶</span>
-                  <button
-                    v-if="item.categoryName && item.categoryId"
-                    type="button"
-                    class="pill"
-                    @click="selectCategory(item.categoryId)"
-                  >
-                    {{ item.categoryName }}
-                  </button>
-                  <span class="date-text">{{ formatDate(item.publishTime || item.createTime) }}</span>
-                  <span v-if="item.readingMinutes" class="date-text">
+            <div class="feed-list">
+              <article
+                v-for="(item, idx) in streamArticles"
+                :key="item.id"
+                data-morph-card="feed"
+                :data-article-id="item.id"
+                class="feed-row"
+                :class="{
+                  'has-thumb': Boolean(item.coverImage),
+                  'animate-rise': !skipRiseOnRestore,
+                  'is-morph-hidden':
+                    hiddenHomeArticleId === item.id && hiddenHomeOriginKind === 'feed',
+                }"
+                :style="{ '--stagger': idx + 1 }"
+                @pointerenter="warmupArticle(item.id)"
+                @click.capture="captureOriginOnCardClick(item, 'feed', $event)"
+              >
+                <div class="feed-date-col">
+                  <time class="feed-date">
+                    {{ formatDate(item.publishTime || item.createTime) }}
+                  </time>
+                  <span v-if="item.readingMinutes" class="feed-duration">
                     约 {{ item.readingMinutes }} 分钟
                   </span>
                 </div>
 
-                <h2 class="article-title">
-                  <RouterLink :to="`/article/${item.id}`">{{ item.title }}</RouterLink>
-                </h2>
-
-                <p v-if="item.summary" class="article-summary">{{ item.summary }}</p>
-
-                <div class="article-footer">
-                  <div class="tag-row">
+                <div class="feed-body-col">
+                  <div class="feed-eyebrow">
+                    <span class="feed-ordinal">
+                      #{{ formatOrdinal(showSpotlight ? idx + 2 : idx + 1) }}
+                    </span>
+                    <span v-if="item.isTop === 1" class="feed-pin">置顶</span>
                     <button
-                      v-for="tag in (item.tags || []).slice(0, 3)"
-                      :key="tag.id"
+                      v-if="item.categoryName && item.categoryId"
                       type="button"
-                      class="pill"
-                      @click="selectTag(tag.id)"
+                      class="inline-cat-btn"
+                      @click="selectCategory(item.categoryId)"
                     >
-                      <span
-                        v-if="tag.color"
-                        class="tag-dot"
-                        :style="{ backgroundColor: tag.color }"
-                      />
-                      <span>{{ tag.name }}</span>
+                      {{ item.categoryName }}
                     </button>
+                    <span class="feed-stats">
+                      阅读 {{ item.viewCount ?? 0 }} · 评论 {{ item.commentCount ?? 0 }}
+                    </span>
                   </div>
 
-                  <div class="footer-right">
-                    <div class="stats-row">
-                      <span>阅读 {{ item.viewCount ?? 0 }}</span>
-                      <span>点赞 {{ item.likeCount ?? 0 }}</span>
-                      <span>评论 {{ item.commentCount ?? 0 }}</span>
+                  <h3 class="feed-title">
+                    <RouterLink :to="`/article/${item.id}`">{{ item.title }}</RouterLink>
+                  </h3>
+
+                  <p v-if="item.summary" class="feed-summary">{{ item.summary }}</p>
+
+                  <div class="feed-row-footer">
+                    <div class="hash-tags">
+                      <button
+                        v-for="tag in (item.tags || []).slice(0, 4)"
+                        :key="tag.id"
+                        type="button"
+                        class="hash-tag-btn"
+                        @click="selectTag(tag.id)"
+                      >
+                        #{{ tag.name }}
+                      </button>
                     </div>
-                    <RouterLink :to="`/article/${item.id}`" class="read-more">
-                      全文
+
+                    <RouterLink :to="`/article/${item.id}`" class="editorial-read-link">
+                      <span>阅读</span>
+                      <svg viewBox="0 0 24 24" class="arrow-icon" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
                     </RouterLink>
                   </div>
                 </div>
-              </div>
-            </article>
-          </div>
+
+                <RouterLink
+                  v-if="item.coverImage"
+                  :to="`/article/${item.id}`"
+                  class="feed-thumb"
+                  :aria-label="item.title"
+                >
+                  <img :src="item.coverImage" :alt="item.title" loading="lazy" />
+                </RouterLink>
+              </article>
+            </div>
+          </section>
         </template>
 
-        <div v-if="total > pageSize" class="pagination-bar card">
+        <div v-if="total > pageSize" class="pagination-bar">
           <button type="button" class="btn" :disabled="pageNum <= 1" @click="changePage(pageNum - 1)">
             上一页
           </button>
@@ -284,77 +360,36 @@
         </div>
       </section>
 
-      <!-- 右侧固定栏：个人卡片、热门文章、标签云整体固定在右侧 -->
+      <!-- 右侧轻盈固定边栏：热门文章 + 标签索引 -->
       <aside class="side-col">
         <div class="side-fixed-stack">
           <div
-            v-if="siteInfo"
-            class="author-card card card-interactive animate-rise"
-            style="--stagger: 1"
-            @pointermove="onPointerMove"
-          >
-            <div class="author-header">
-              <div class="avatar-orbit">
-                <img
-                  v-if="siteInfo.authorAvatar"
-                  :src="siteInfo.authorAvatar"
-                  :alt="siteInfo.authorName"
-                  class="author-avatar"
-                />
-                <div v-else class="author-avatar author-avatar--fallback">
-                  {{ (siteInfo.authorName || "B").slice(0, 1) }}
-                </div>
-              </div>
-              <div class="author-intro">
-                <h3 class="author-name">{{ siteInfo.authorName }}</h3>
-                <p v-if="siteInfo.authorBio" class="author-bio">{{ siteInfo.authorBio }}</p>
-              </div>
-            </div>
-
-            <div class="author-stats">
-              <div class="stat-tile">
-                <strong>{{ siteInfo.articleCount }}</strong>
-                <span>文章</span>
-              </div>
-              <div class="stat-tile">
-                <strong>{{ siteInfo.categoryCount }}</strong>
-                <span>分类</span>
-              </div>
-              <div class="stat-tile">
-                <strong>{{ siteInfo.tagCount }}</strong>
-                <span>标签</span>
-              </div>
-              <div class="stat-tile">
-                <strong>{{ siteInfo.totalViews }}</strong>
-                <span>总阅读</span>
-              </div>
-            </div>
-
-            <div class="author-actions">
-              <RouterLink to="/about" class="btn author-sub-btn">关于博主</RouterLink>
-              <a
-                v-if="siteInfo.githubUrl"
-                :href="siteInfo.githubUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="btn btn-primary author-sub-btn"
-              >
-                GitHub
-              </a>
-            </div>
-          </div>
-
-          <div
             v-if="siteInfo?.hotArticles?.length"
-            class="side-card card card-interactive animate-rise"
-            style="--stagger: 2"
-            @pointermove="onPointerMove"
+            class="side-card card"
+            :class="{ 'animate-rise': !skipRiseOnRestore }"
+            style="--stagger: 1"
           >
-            <h4 class="side-title">热门文章</h4>
+            <div class="side-title-row">
+              <h4 class="side-title">热门文章</h4>
+              <span class="side-kicker">TOP</span>
+            </div>
             <ul class="hot-list">
               <li v-for="(hot, idx) in siteInfo.hotArticles" :key="hot.id">
-                <RouterLink :to="`/article/${hot.id}`" class="hot-link">
-                  <span class="hot-rank" :class="`hot-rank--${idx + 1}`">{{ idx + 1 }}</span>
+                <RouterLink
+                  :to="`/article/${hot.id}`"
+                  data-morph-card="hot"
+                  :data-article-id="hot.id"
+                  class="hot-link"
+                  :class="{
+                    'is-morph-hidden':
+                      hiddenHomeArticleId === hot.id && hiddenHomeOriginKind === 'hot',
+                  }"
+                  @pointerenter="warmupArticle(hot.id)"
+                  @click="captureHotOriginOnClick(hot, $event)"
+                >
+                  <span class="hot-rank" :class="{ 'is-top': idx === 0 }">
+                    {{ formatOrdinal(idx + 1) }}
+                  </span>
                   <span class="hot-text">{{ hot.title }}</span>
                   <span class="hot-views">{{ hot.viewCount }}</span>
                 </RouterLink>
@@ -364,36 +399,32 @@
 
           <div
             v-if="tags.length"
-            class="side-card card card-interactive animate-rise"
-            style="--stagger: 3"
-            @pointermove="onPointerMove"
+            class="side-card card"
+            :class="{ 'animate-rise': !skipRiseOnRestore }"
+            style="--stagger: 2"
           >
             <div class="side-title-row">
-              <h4 class="side-title">标签云</h4>
+              <h4 class="side-title">标签索引</h4>
               <button
                 v-if="activeTagId"
                 type="button"
                 class="side-clear-btn"
                 @click="selectTag(activeTagId)"
               >
-                重置标签
+                重置
               </button>
+              <span v-else class="side-kicker">TAGS</span>
             </div>
             <div class="tag-cloud">
               <button
                 v-for="tag in tags"
                 :key="tag.id"
                 type="button"
-                class="pill"
+                class="tag-chip"
                 :class="{ active: activeTagId === tag.id }"
                 @click="selectTag(tag.id)"
               >
-                <span
-                  v-if="tag.color"
-                  class="tag-dot"
-                  :style="{ backgroundColor: tag.color }"
-                />
-                <span>{{ tag.name }}</span>
+                <span>#{{ tag.name }}</span>
                 <span class="tag-count">{{ tag.articleCount }}</span>
               </button>
             </div>
@@ -405,7 +436,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   blogApi,
@@ -413,15 +444,31 @@ import {
   type BlogCategory,
   type BlogTag,
 } from "@/api/blog";
+import {
+  launchLeaveMorph,
+  peekFreshHomeSnapshot,
+  prefetchArticleDetail,
+  prepareEnterMorph,
+  saveHomeSnapshot,
+  useArticleTransition,
+  type ArticlePreviewSeed,
+  type MorphOriginKind,
+} from "@/composables/useArticleTransition";
 import { useSiteInfo } from "@/composables/useSiteInfo";
 
 const route = useRoute();
 const router = useRouter();
 const { siteInfo, loadSiteInfo } = useSiteInfo();
+const { hiddenHomeArticleId, hiddenHomeOriginKind, isReturningToHome } = useArticleTransition();
+
+const homePageRef = ref<HTMLElement | null>(null);
+
+const initialSnapshot = peekFreshHomeSnapshot(route.fullPath);
+const skipRiseOnRestore = ref(Boolean(initialSnapshot));
 
 const loading = ref(false);
-const articles = ref<BlogArticleItem[]>([]);
-const total = ref(0);
+const articles = ref<BlogArticleItem[]>(initialSnapshot?.articles.map((item) => ({ ...item })) ?? []);
+const total = ref(initialSnapshot?.total ?? 0);
 const pageNum = ref(1);
 const pageSize = 10;
 
@@ -429,13 +476,46 @@ const keywords = ref("");
 const activeCategoryId = ref<string | undefined>(undefined);
 const activeTagId = ref<string | undefined>(undefined);
 
-const categories = ref<BlogCategory[]>([]);
-const tags = ref<BlogTag[]>([]);
+const categories = ref<BlogCategory[]>(initialSnapshot?.categories.map((cat) => ({ ...cat })) ?? []);
+const tags = ref<BlogTag[]>(initialSnapshot?.tags.map((tag) => ({ ...tag })) ?? []);
 
 const dockSentinelRef = ref<HTMLElement | null>(null);
+const searchBoxRef = ref<HTMLElement | null>(null);
 const searchInputRef = ref<HTMLInputElement | null>(null);
+const searchExpanded = ref(false);
 const isDockStuck = ref(false);
 let dockObserver: IntersectionObserver | null = null;
+
+function openSearch(selectAll = false) {
+  searchExpanded.value = true;
+  nextTick(() => {
+    searchInputRef.value?.focus();
+    if (selectAll) {
+      searchInputRef.value?.select();
+    }
+  });
+}
+
+function handleSearchButtonClick() {
+  if (!searchExpanded.value) {
+    openSearch(false);
+    return;
+  }
+  const hasActiveQuery = typeof route.query.q === "string" && route.query.q.trim().length > 0;
+  if (keywords.value.trim() || hasActiveQuery) {
+    handleSearch();
+    return;
+  }
+  searchExpanded.value = false;
+  searchInputRef.value?.blur();
+}
+
+function handleDocumentClick(e: MouseEvent) {
+  if (!searchExpanded.value || keywords.value.trim()) return;
+  const target = e.target as Node | null;
+  if (target && searchBoxRef.value?.contains(target)) return;
+  searchExpanded.value = false;
+}
 
 function handleGlobalKeydown(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null;
@@ -446,20 +526,21 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
-    searchInputRef.value?.focus();
-    searchInputRef.value?.select();
+    openSearch(true);
     return;
   }
 
   if (e.key === "/" && !inEditable) {
     e.preventDefault();
-    searchInputRef.value?.focus();
-    searchInputRef.value?.select();
+    openSearch(true);
     return;
   }
 
-  if (e.key === "Escape" && document.activeElement === searchInputRef.value) {
+  if (e.key === "Escape" && (document.activeElement === searchInputRef.value || searchExpanded.value)) {
     searchInputRef.value?.blur();
+    if (!keywords.value.trim()) {
+      searchExpanded.value = false;
+    }
   }
 }
 
@@ -487,21 +568,76 @@ function formatOrdinal(num: number) {
   return num < 10 ? `0${num}` : String(num);
 }
 
-function onPointerMove(e: PointerEvent) {
-  const target = e.currentTarget as HTMLElement | null;
-  if (!target) return;
-  const rect = target.getBoundingClientRect();
-  target.style.setProperty("--mx", `${e.clientX - rect.left}px`);
-  target.style.setProperty("--my", `${e.clientY - rect.top}px`);
-}
-
 function formatDate(val?: string) {
   if (!val) return "";
   return val.slice(0, 10);
 }
 
-async function fetchArticles() {
-  loading.value = true;
+function isPlainNavigationClick(e: MouseEvent) {
+  return !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0;
+}
+
+function warmupArticle(id: string) {
+  void prefetchArticleDetail(id, () => blogApi.getArticleDetail(id));
+}
+
+function captureOriginOnCardClick(
+  preview: ArticlePreviewSeed,
+  originKind: MorphOriginKind,
+  e: MouseEvent,
+) {
+  if (!isPlainNavigationClick(e)) return;
+  const targetEl = e.target as HTMLElement | null;
+  if (!targetEl?.closest('a[href^="/article/"]')) return;
+  const cardEl = e.currentTarget as HTMLElement | null;
+  if (!cardEl) return;
+
+  warmupArticle(preview.id);
+  saveHomeSnapshot({
+    queryKey: route.fullPath,
+    articles: articles.value,
+    total: total.value,
+    categories: categories.value,
+    tags: tags.value,
+    scrollY: window.scrollY,
+  });
+  prepareEnterMorph(preview, originKind, cardEl, homePageRef.value);
+}
+
+function captureHotOriginOnClick(
+  hot: { id: string; title: string; publishTime?: string; viewCount: number },
+  e: MouseEvent,
+) {
+  if (!isPlainNavigationClick(e)) return;
+  const linkEl = e.currentTarget as HTMLElement | null;
+  if (!linkEl) return;
+
+  warmupArticle(hot.id);
+  saveHomeSnapshot({
+    queryKey: route.fullPath,
+    articles: articles.value,
+    total: total.value,
+    categories: categories.value,
+    tags: tags.value,
+    scrollY: window.scrollY,
+  });
+  prepareEnterMorph(
+    {
+      id: hot.id,
+      title: hot.title,
+      publishTime: hot.publishTime,
+      viewCount: Number(hot.viewCount || 0),
+    },
+    "hot",
+    linkEl,
+    homePageRef.value,
+  );
+}
+
+async function fetchArticles(options: { silent?: boolean } = {}) {
+  if (!options.silent) {
+    loading.value = true;
+  }
   try {
     const res = await blogApi.getArticles({
       pageNum: pageNum.value,
@@ -512,8 +648,13 @@ async function fetchArticles() {
     });
     articles.value = res.list ?? [];
     total.value = res.total ?? 0;
+    for (const item of articles.value.slice(0, 5)) {
+      warmupArticle(item.id);
+    }
   } finally {
-    loading.value = false;
+    if (!options.silent) {
+      loading.value = false;
+    }
   }
 }
 
@@ -538,6 +679,9 @@ function handleSearch() {
 function clearKeywords() {
   keywords.value = "";
   handleSearch();
+  nextTick(() => {
+    searchInputRef.value?.focus();
+  });
 }
 
 function clearCategory() {
@@ -564,6 +708,7 @@ function selectTag(id: string) {
 
 function resetFilters() {
   keywords.value = "";
+  searchExpanded.value = false;
   activeCategoryId.value = undefined;
   activeTagId.value = undefined;
   pageNum.value = 1;
@@ -582,6 +727,9 @@ watch(
   () => route.query,
   (q) => {
     keywords.value = typeof q.q === "string" ? q.q : "";
+    if (keywords.value.trim()) {
+      searchExpanded.value = true;
+    }
     activeCategoryId.value = typeof q.categoryId === "string" ? q.categoryId : undefined;
     activeTagId.value = typeof q.tagId === "string" ? q.tagId : undefined;
     pageNum.value = typeof q.page === "string" ? Math.max(1, Number(q.page) || 1) : 1;
@@ -589,8 +737,24 @@ watch(
   { immediate: true },
 );
 
+function resolveMorphReturnCard(articleId: string, preferredKind: MorphOriginKind) {
+  const safeId = CSS.escape(articleId);
+  const preferred = document.querySelector<HTMLElement>(
+    `[data-morph-card="${preferredKind}"][data-article-id="${safeId}"]`,
+  );
+  if (preferred) {
+    return { el: preferred, kind: preferredKind };
+  }
+  const fallbackKind: MorphOriginKind = preferredKind === "feed" ? "hot" : "feed";
+  const fallback = document.querySelector<HTMLElement>(
+    `[data-morph-card="${fallbackKind}"][data-article-id="${safeId}"]`,
+  );
+  return fallback ? { el: fallback, kind: fallbackKind } : null;
+}
+
 onMounted(async () => {
   window.addEventListener("keydown", handleGlobalKeydown);
+  document.addEventListener("click", handleDocumentClick);
   if (dockSentinelRef.value) {
     dockObserver = new IntersectionObserver(
       ([entry]) => {
@@ -599,6 +763,24 @@ onMounted(async () => {
       { rootMargin: "-79px 0px 0px 0px", threshold: 0 },
     );
     dockObserver.observe(dockSentinelRef.value);
+  }
+
+  void import("@/views/ArticleDetailView.vue");
+
+  if (initialSnapshot) {
+    window.scrollTo({ top: initialSnapshot.scrollY, behavior: "instant" });
+    await nextTick();
+    launchLeaveMorph(resolveMorphReturnCard);
+
+    const [, catList, tagList] = await Promise.all([
+      loadSiteInfo(),
+      blogApi.getCategories(),
+      blogApi.getTags(),
+    ]);
+    categories.value = catList;
+    tags.value = tagList;
+    await fetchArticles({ silent: true });
+    return;
   }
 
   const [, catList, tagList] = await Promise.all([
@@ -613,6 +795,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("keydown", handleGlobalKeydown);
+  document.removeEventListener("click", handleDocumentClick);
   dockObserver?.disconnect();
 });
 </script>
@@ -622,39 +805,187 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* 左侧内容区 + 右侧固定栏 */
+.is-morph-hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
+/* 顶部出版物序言区（Masthead） */
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px 32px;
+  padding: 10px 4px 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.masthead-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  flex: 1 1 420px;
+}
+
+.masthead-avatar-wrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-glass-strong);
+  box-shadow: 0 2px 10px -4px rgba(15, 23, 42, 0.14);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease;
+}
+
+.masthead-avatar-wrap:hover {
+  transform: scale(1.04);
+  border-color: var(--accent);
+}
+
+.masthead-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.masthead-avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.masthead-intro {
+  min-width: 0;
+}
+
+.masthead-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.masthead-author {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.masthead-sep {
+  opacity: 0.45;
+}
+
+.masthead-title {
+  margin: 0;
+  font-size: clamp(23px, 2.5vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.masthead-bio {
+  margin: 7px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+
+.masthead-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.masthead-metrics {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.masthead-metrics strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.metric-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.45;
+}
+
+.masthead-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.masthead-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  position: relative;
+  transition: color 0.18s ease;
+}
+
+.masthead-link:hover {
+  color: var(--accent);
+}
+
+/* 主双栏结构：左宽阅读列表 + 右 264px 轻盈边栏 */
 .home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 264px;
+  gap: 34px;
   align-items: stretch;
 }
 
 .feed-col {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
   min-width: 0;
 }
 
 .dock-sentinel {
   height: 1px;
-  margin-bottom: -19px;
+  margin-bottom: -21px;
   pointer-events: none;
 }
 
-/* 统一筛选与搜索吸顶条（包含内联标签状态，不额外挤出第二行） */
+/* 筛选与折叠搜索吸顶条 */
 .filter-dock {
   position: sticky;
   top: 78px;
   z-index: 25;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 20px;
+  padding: 7px 10px;
+  border-radius: var(--radius-dock);
   transition:
     background-color 0.25s ease,
     box-shadow 0.25s ease,
@@ -663,43 +994,67 @@ onUnmounted(() => {
 
 .filter-dock.is-stuck {
   background: var(--bg-glass-strong);
-  backdrop-filter: blur(26px) saturate(185%);
-  -webkit-backdrop-filter: blur(26px) saturate(185%);
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-glass));
-  box-shadow:
-    0 14px 32px -12px rgba(15, 23, 42, 0.16),
-    var(--specular-inset);
-}
-
-html.dark .filter-dock.is-stuck {
-  box-shadow:
-    0 16px 34px -10px rgba(0, 0, 0, 0.6),
-    var(--specular-inset);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border-color: color-mix(in srgb, var(--text-primary) 12%, var(--border-glass));
+  box-shadow: var(--shadow-glass-hover);
 }
 
 .dock-cats {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 2px 0;
 }
 
 .dock-cats::-webkit-scrollbar {
   display: none;
 }
 
-.dock-cats .pill {
+.filter-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: var(--radius-chip);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.filter-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+}
+
+.filter-tab.active {
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--bg-subtle);
+  border-color: var(--border-subtle);
+}
+
+.tab-count {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .inline-tag-filter {
   background: var(--accent-soft);
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
   font-weight: 600;
 }
 
@@ -709,38 +1064,88 @@ html.dark .filter-dock.is-stuck {
   padding-left: 2px;
 }
 
+/* 折叠式圆形搜索按钮：点击后向左平滑弹出输入框 */
 .search-capsule {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 4px 4px 12px;
-  border-radius: 14px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 38px;
+  height: 38px;
+  padding: 2px;
+  gap: 0;
+  border-radius: 19px;
+  corner-shape: round;
   background: var(--bg-subtle);
   border: 1px solid var(--border-subtle);
-  min-width: 240px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    gap 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.search-capsule:focus-within {
+.search-capsule:not(.is-expanded):hover {
+  border-color: var(--text-muted);
+}
+
+.search-capsule:not(.is-expanded):hover .search-circle-btn {
+  color: var(--text-primary);
+}
+
+.search-capsule.is-expanded {
+  width: 288px;
+  padding: 2px 2px 2px 14px;
+  gap: 6px;
+  border-radius: var(--radius-control);
+  cursor: default;
+}
+
+.search-capsule.is-expanded:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.search-icon {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
+.search-expand-inner {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.search-capsule.is-expanded .search-expand-inner {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  transition-delay: 0.06s;
 }
 
 .search-input {
   flex: 1;
+  width: 100%;
   min-width: 0;
   border: none;
   background: transparent;
   color: var(--text-primary);
   outline: none;
   font-size: 13px;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
 }
 
 .clear-btn {
@@ -754,102 +1159,396 @@ html.dark .filter-dock.is-stuck {
   flex-shrink: 0;
 }
 
-.search-submit {
-  padding: 6px 13px;
-  border-radius: 11px;
-  font-size: 13px;
+.clear-btn:hover {
+  color: var(--text-primary);
 }
 
-/* 主视觉焦点卡（Featured Spotlight Card） */
-.featured-card {
+.search-circle-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 16px;
+  corner-shape: round;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    border-radius 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.22s ease,
+    color 0.22s ease,
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.22s ease;
+}
+
+.search-circle-btn:active {
+  transform: scale(0.92);
+}
+
+.search-capsule.is-expanded .search-circle-btn {
+  border-radius: var(--radius-chip);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #ffffff;
+}
+
+html.dark .search-capsule.is-expanded .search-circle-btn {
+  color: #06131a;
+}
+
+.search-circle-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 精选头条卡（克制纸感，无炫彩渐变背景/四方格） */
+.featured-lead {
+  padding: 28px 32px;
+  background: var(--morph-surface);
+  border-radius: var(--radius-card-sm);
+}
+
+.featured-lead.has-cover {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 232px;
-  gap: 24px;
-  padding: 26px 28px;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--accent) 12%, var(--bg-glass-strong)) 0%,
-    var(--bg-glass-strong) 58%,
-    color-mix(in srgb, var(--accent-2) 10%, var(--bg-glass-strong)) 100%
-  );
-  border-color: color-mix(in srgb, var(--accent) 26%, var(--border-glass));
-  box-shadow:
-    0 20px 44px -18px color-mix(in srgb, var(--accent) 26%, transparent),
-    var(--specular-inset);
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 28px;
+  align-items: center;
 }
 
-.featured-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-glass-hover), var(--specular-inset);
-}
-
-.featured-main {
+.lead-main {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.featured-eyebrow {
+.lead-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
-.featured-badge {
+.lead-badge {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 11px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #ffffff;
+  padding: 2px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mono-meta,
+.mono-stat {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-html.dark .featured-badge {
-  color: #06131a;
+.meta-dot {
+  color: var(--text-muted);
+  opacity: 0.45;
+  font-size: 12px;
 }
 
-.featured-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
+.inline-cat-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.18s ease;
 }
 
-.featured-title {
-  margin: 0 0 12px;
-  font-size: clamp(22px, 2.35vw, 28px);
-  font-weight: 800;
-  line-height: 1.32;
-  letter-spacing: -0.02em;
-}
-
-.featured-title a {
-  transition: color 0.2s ease;
-}
-
-.featured-card:hover .featured-title a {
+.inline-cat-btn:hover {
   color: var(--accent);
 }
 
-.featured-summary {
+.lead-issue {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  opacity: 0.72;
+}
+
+.lead-title {
+  margin: 0 0 12px;
+  font-size: clamp(22px, 2.25vw, 27px);
+  font-weight: 800;
+  line-height: 1.32;
+  letter-spacing: -0.022em;
+  color: var(--text-primary);
+}
+
+.lead-title a {
+  transition: color 0.18s ease;
+}
+
+.featured-lead:hover .lead-title a {
+  color: var(--accent);
+}
+
+.lead-summary {
   margin: 0 0 20px;
   font-size: 14.5px;
   line-height: 1.78;
   color: var(--text-secondary);
+  max-width: 66ch;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.featured-footer {
-  margin-top: auto;
+.lead-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.lead-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.lead-cover {
+  display: block;
+  border-radius: var(--radius-inner);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  aspect-ratio: 4 / 3;
+}
+
+.lead-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.featured-lead:hover .lead-cover img {
+  transform: scale(1.04);
+}
+
+/* 标签纯文本链接 */
+.hash-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hash-tag-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.hash-tag-btn:hover {
+  color: var(--accent);
+}
+
+.editorial-read-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  transition: color 0.18s ease;
+}
+
+.arrow-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.featured-lead:hover .editorial-read-link,
+.feed-row:hover .editorial-read-link {
+  color: var(--accent);
+}
+
+.featured-lead:hover .arrow-icon,
+.feed-row:hover .arrow-icon {
+  transform: translateX(3px);
+}
+
+/* 极简线性编辑文章列表 */
+.editorial-feed {
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.feed-section-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.feed-section-count {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.feed-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 20px;
+  padding: 22px 14px;
+  margin: 0 -14px;
+  border-radius: var(--radius-dock);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.feed-row.has-thumb {
+  grid-template-columns: 112px minmax(0, 1fr) 136px;
+}
+
+.feed-row:last-child {
+  border-bottom-color: transparent;
+}
+
+.feed-row:hover {
+  background: var(--bg-glass-strong);
+  border-bottom-color: transparent;
+}
+
+.feed-date-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 3px;
+}
+
+.feed-date {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-duration {
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.78;
+}
+
+.feed-body-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.feed-ordinal {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.feed-pin {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+}
+
+.feed-stats {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-title {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.012em;
+  color: var(--text-primary);
+}
+
+.feed-title a {
+  transition: color 0.18s ease;
+}
+
+.feed-row:hover .feed-title a {
+  color: var(--accent);
+}
+
+.feed-summary {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.72;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.feed-row-footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -857,132 +1556,53 @@ html.dark .featured-badge {
   gap: 12px;
 }
 
-.featured-cta {
-  padding: 8px 18px;
-  font-size: 13px;
-  border-radius: 999px;
-}
-
-.featured-visual {
-  display: flex;
-  align-items: stretch;
-  min-width: 0;
-}
-
-.featured-cover-box {
-  position: relative;
-  width: 100%;
-  min-height: 196px;
-  border-radius: 18px;
+.feed-thumb {
+  display: block;
+  width: 136px;
+  height: 88px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   border: 1px solid var(--border-subtle);
+  align-self: center;
 }
 
-.featured-cover-box img {
+.feed-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.featured-card:hover .featured-cover-box img {
+.feed-row:hover .feed-thumb img {
   transform: scale(1.05);
 }
 
-.cover-reading-badge {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.72);
-  backdrop-filter: blur(8px);
-  color: #f8fafc;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.featured-plaque {
-  width: 100%;
-  border-radius: 18px;
-  padding: 16px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
-  transition: border-color 0.25s ease, transform 0.3s ease;
-}
-
-.featured-card:hover .featured-plaque {
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-}
-
-.plaque-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.plaque-kicker {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent);
-}
-
-.plaque-num {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1;
-  color: color-mix(in srgb, var(--accent) 45%, var(--text-muted));
-}
-
-.plaque-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-
-.plaque-cell {
-  padding: 9px 10px;
-  border-radius: 12px;
-  background: var(--bg-glass-strong);
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.plaque-cell strong {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.plaque-cell span {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-/* 骨架屏 */
-.skeleton-card {
-  padding: 24px;
+/* 骨架屏 & 空状态 */
+.skeleton-lead {
+  padding: 28px 32px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.skeleton-card--featured {
-  min-height: 220px;
+.skeleton-feed {
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-row {
+  padding: 20px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .skeleton-line {
-  height: 14px;
+  height: 13px;
   border-radius: 8px;
-  background: linear-gradient(90deg, var(--bg-subtle) 25%, rgba(148, 163, 184, 0.2) 50%, var(--bg-subtle) 75%);
+  background: linear-gradient(90deg, var(--bg-subtle) 25%, rgba(148, 163, 184, 0.18) 50%, var(--bg-subtle) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
@@ -990,8 +1610,8 @@ html.dark .featured-badge {
 .skeleton-line.h-lg {
   height: 22px;
 }
-.skeleton-line.w-1\/3 {
-  width: 33%;
+.skeleton-line.w-1\/4 {
+  width: 24%;
 }
 .skeleton-line.w-2\/3 {
   width: 66%;
@@ -1021,167 +1641,21 @@ html.dark .featured-badge {
   font-size: 14px;
 }
 
-/* 文章网格容器 */
-.article-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-
-.article-grid.is-two-col {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.article-card {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-top: 2px solid transparent;
-}
-
-.article-card:hover {
-  transform: translateY(-3px);
-  border-top-color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--border-glass));
-  box-shadow: var(--shadow-glass-hover), var(--specular-inset);
-}
-
-.article-cover {
-  display: block;
-  overflow: hidden;
-}
-
-.article-cover img {
-  width: 100%;
-  height: 175px;
-  object-fit: cover;
-  display: block;
-  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.article-card:hover .article-cover img {
-  transform: scale(1.045);
-}
-
-.article-body {
-  padding: 20px 22px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.article-meta-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.article-ordinal {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent);
-}
-
-.top-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #f43f5e, #f97316);
-  color: #fff;
-}
-
-.date-text {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.article-title {
-  margin: 0 0 8px;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.42;
-}
-
-.article-title a {
-  transition: color 0.2s ease;
-}
-
-.article-card:hover .article-title a {
-  color: var(--accent);
-}
-
-.article-summary {
-  margin: 0 0 16px;
-  color: var(--text-secondary);
-  font-size: 13.5px;
-  line-height: 1.72;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.article-footer {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.tag-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.footer-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.stats-row {
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.read-more {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
 .pagination-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 18px;
-  border-radius: 20px;
+  padding: 16px 4px 0;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .page-info {
   font-size: 13px;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-/* 右侧整栏固定：个人卡片 + 热门文章 + 标签云 */
+/* 右侧轻盈固定边栏 */
 .side-col {
   min-width: 0;
 }
@@ -1191,143 +1665,42 @@ html.dark .featured-badge {
   top: 78px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   max-height: calc(100vh - 96px);
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 4px 6px 12px;
-  margin: -4px -6px;
+  padding: 2px 4px 10px;
+  margin: -2px -4px;
 }
 
 .side-fixed-stack::-webkit-scrollbar {
   display: none;
 }
 
-.author-card {
-  padding: 18px 18px 16px;
-}
-
-.author-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.avatar-orbit {
-  position: relative;
-  width: 62px;
-  height: 62px;
-  padding: 3px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2), #f472b6);
-  transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.author-card:hover .avatar-orbit {
-  transform: rotate(10deg) scale(1.05);
-}
-
-.author-avatar {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  display: block;
-  border: 2px solid var(--bg-glass-strong);
-}
-
-.author-avatar--fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-subtle);
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.author-intro {
-  min-width: 0;
-}
-
-.author-name {
-  margin: 0 0 4px;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.author-bio {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.author-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.stat-tile {
-  padding: 8px 4px;
-  border-radius: 13px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-size: 11px;
-  color: var(--text-muted);
-  transition: transform 0.2s ease, border-color 0.2s ease;
-}
-
-.stat-tile:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-.stat-tile strong {
-  font-size: 15px;
-  color: var(--text-primary);
-}
-
-.author-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.author-sub-btn {
-  flex: 1;
-  padding: 7px 10px;
-  font-size: 13px;
-}
-
 .side-card {
-  padding: 15px 16px;
+  padding: 16px 18px;
+  border-radius: var(--radius-card-sm);
 }
 
 .side-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.side-title-row .side-title {
-  margin: 0;
+  margin-bottom: 12px;
 }
 
 .side-title {
-  margin: 0 0 10px;
-  font-size: 14px;
+  margin: 0;
+  font-size: 13.5px;
   font-weight: 700;
+  color: var(--text-primary);
+}
+
+.side-kicker {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
 }
 
 .side-clear-btn {
@@ -1345,55 +1718,37 @@ html.dark .featured-badge {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .hot-link {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 6px 8px;
-  border-radius: 11px;
+  gap: 10px;
+  padding: 7px 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius-chip);
   font-size: 13px;
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  color: var(--text-secondary);
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
 .hot-link:hover {
-  background: var(--accent-soft);
-  transform: translateX(3px);
-}
-
-.hot-link:hover .hot-text {
-  color: var(--accent);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
 }
 
 .hot-rank {
-  width: 20px;
-  height: 20px;
-  border-radius: 7px;
-  background: var(--bg-subtle);
-  color: var(--text-muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
   font-weight: 700;
+  color: var(--text-muted);
   flex-shrink: 0;
+  width: 20px;
 }
 
-.hot-rank--1 {
-  background: linear-gradient(135deg, #f59e0b, #ef4444);
-  color: #fff;
-}
-
-.hot-rank--2 {
-  background: linear-gradient(135deg, #0ea5e9, #6366f1);
-  color: #fff;
-}
-
-.hot-rank--3 {
-  background: linear-gradient(135deg, #10b981, #14b8a6);
-  color: #fff;
+.hot-rank.is-top {
+  color: var(--accent);
 }
 
 .hot-text {
@@ -1405,24 +1760,54 @@ html.dark .featured-badge {
 }
 
 .hot-views {
-  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .tag-cloud {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 6px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-chip);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease;
+}
+
+.tag-chip:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.tag-chip.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  font-weight: 600;
 }
 
 .tag-count {
-  opacity: 0.7;
-  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  opacity: 0.65;
 }
 
 @media (max-width: 960px) {
   .home-grid {
     grid-template-columns: 1fr;
+    gap: 24px;
   }
 
   .side-fixed-stack {
@@ -1435,27 +1820,68 @@ html.dark .featured-badge {
 }
 
 @media (max-width: 740px) {
-  .featured-card {
-    grid-template-columns: 1fr;
-    padding: 20px;
-    gap: 16px;
+  .masthead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    padding-bottom: 18px;
   }
 
-  .article-grid.is-two-col {
+  .masthead-right {
+    align-items: flex-start;
+  }
+
+  .featured-lead {
+    padding: 22px 20px;
+  }
+
+  .featured-lead.has-cover {
     grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .feed-row,
+  .feed-row.has-thumb {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 18px 10px;
+    margin: 0 -10px;
+  }
+
+  .feed-date-col {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding-top: 0;
+  }
+
+  .feed-thumb {
+    width: 100%;
+    height: 170px;
+  }
+}
+
+@supports (corner-shape: squircle) {
+  .filter-tab,
+  .search-capsule.is-expanded,
+  .search-capsule.is-expanded .search-circle-btn,
+  .lead-cover,
+  .feed-row,
+  .feed-thumb,
+  .hot-link,
+  .tag-chip {
+    corner-shape: squircle;
   }
 }
 
 @media (max-width: 640px) {
   .filter-dock {
     position: static;
-    flex-direction: column;
-    align-items: stretch;
+    gap: 8px;
   }
 
-  .search-capsule {
-    width: 100%;
-    min-width: 0;
+  .search-capsule.is-expanded {
+    width: min(230px, 68vw);
   }
 }
 </style>

@@ -79,8 +79,14 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 6px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+@supports (corner-shape: squircle) {
+  .archive-item {
+    corner-shape: squircle;
+  }
 }
 
 .archive-item:hover {

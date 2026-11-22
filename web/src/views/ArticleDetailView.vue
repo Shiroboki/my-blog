@@ -1,386 +1,594 @@
 <template>
-  <div v-if="loading" class="card state-card animate-rise">文章加载中...</div>
-  <div v-else-if="errorMsg" class="card state-card animate-rise">
-    <p class="error-state-text">{{ errorMsg }}</p>
-    <button type="button" class="btn btn-primary" @click="goBack">
-      {{ hasBackHistory ? "返回上一页" : "返回首页" }}
-    </button>
-  </div>
-  <div v-else-if="article" class="detail-grid">
-    <main class="article-main">
-      <article class="card article-sheet animate-rise">
-        <div class="sheet-topbar">
-          <div class="sheet-topbar-left">
-            <button type="button" class="back-btn" @click="goBack">
-              {{ hasBackHistory ? "返回上一页" : "返回首页" }}
-            </button>
-            <RouterLink v-if="hasBackHistory" to="/" class="back-home-link">
-              回到首页
-            </RouterLink>
+  <div class="detail-page">
+    <div v-if="loading" class="card state-card state-card--centered animate-rise">文章加载中...</div>
+    <div v-else-if="errorMsg" class="card state-card state-card--centered animate-rise">
+      <p class="error-state-text">{{ errorMsg }}</p>
+      <button type="button" class="btn btn-primary" @click="goBack">
+        {{ hasBackHistory ? "返回上一页" : "返回首页" }}
+      </button>
+    </div>
+
+    <div v-else-if="article" class="detail-grid">
+      <!-- 左侧宽敞阅读主内容区与讨论区 -->
+      <main class="article-main">
+        <article
+          ref="articleSheetRef"
+          class="card article-sheet"
+          :class="{
+            'animate-rise': !seededFromMorph,
+            'is-morph-hidden': hiddenDetailSheet,
+          }"
+        >
+          <div class="sheet-topbar">
+            <div class="sheet-topbar-left">
+              <button type="button" class="back-btn" @click="goBack">
+                {{ hasBackHistory ? "返回上一页" : "返回首页" }}
+              </button>
+              <RouterLink v-if="hasBackHistory" to="/" class="back-home-link">
+                首页
+              </RouterLink>
+            </div>
+            <div class="sheet-topbar-right">
+              <RouterLink
+                v-if="article.categoryName && article.categoryId"
+                :to="{ path: '/', query: { categoryId: article.categoryId } }"
+                class="pill topbar-cat-pill"
+              >
+                {{ article.categoryName }}
+              </RouterLink>
+              <span v-if="article.readingMinutes" class="topbar-reading-time">
+                约 {{ article.readingMinutes }} 分钟
+              </span>
+            </div>
           </div>
-          <RouterLink to="/archives" class="back-home-link">文章归档</RouterLink>
-        </div>
 
-        <header class="sheet-header">
-          <div class="sheet-meta">
-            <RouterLink
-              v-if="article.categoryName && article.categoryId"
-              :to="{ path: '/', query: { categoryId: article.categoryId } }"
-              class="pill"
-            >
-              {{ article.categoryName }}
-            </RouterLink>
-            <span>发布于 {{ article.publishTime || article.createTime }}</span>
-            <span>阅读 {{ article.viewCount }}</span>
-            <span>评论 {{ article.commentCount }}</span>
-            <span v-if="article.wordCount">{{ article.wordCount }} 字</span>
-            <span v-if="article.readingMinutes">预计阅读 {{ article.readingMinutes }} 分钟</span>
-            <button
-              v-if="annotationThreads.length"
-              type="button"
-              class="pill meta-annotation-btn"
-              @click="openFirstAnnotation"
-            >
-              划词批注 {{ annotationThreads.length }} 处
-            </button>
+          <header class="sheet-header">
+            <div ref="titleSentinelRef" class="sheet-title-slot">
+              <h1 class="sheet-title" :class="{ 'is-absorbed': titleAbsorbed }">
+                {{ article.title }}
+              </h1>
+            </div>
+
+            <p v-if="article.summary" class="sheet-lead">{{ article.summary }}</p>
+
+            <div class="sheet-byline">
+              <div class="byline-author">
+                <img
+                  v-if="siteInfo?.authorAvatar"
+                  :src="siteInfo.authorAvatar"
+                  :alt="siteInfo.authorName"
+                  class="byline-avatar"
+                />
+                <span v-else class="byline-avatar byline-avatar--fallback">
+                  {{ (siteInfo?.authorName || "博").slice(0, 1) }}
+                </span>
+                <span class="byline-name">{{ siteInfo?.authorName || "博主" }}</span>
+              </div>
+              <span class="byline-sep" aria-hidden="true">·</span>
+              <span>{{ formatReadableDate(article.publishTime || article.createTime) }}</span>
+              <span v-if="article.wordCount" class="byline-sep" aria-hidden="true">·</span>
+              <span v-if="article.wordCount">{{ article.wordCount }} 字</span>
+              <span class="byline-sep" aria-hidden="true">·</span>
+              <span>阅读 {{ article.viewCount }}</span>
+              <template v-if="annotationThreads.length">
+                <span class="byline-sep" aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  class="byline-annotation-link"
+                  @click="openFirstAnnotation"
+                >
+                  划词批注 {{ annotationThreads.length }} 处
+                </button>
+              </template>
+              <template v-else-if="article.allowComment !== 0">
+                <span class="byline-sep" aria-hidden="true">·</span>
+                <span class="byline-tip">选中正文可划线批注</span>
+              </template>
+            </div>
+
+            <div v-if="article.tags?.length" class="sheet-tags">
+              <RouterLink
+                v-for="tag in article.tags"
+                :key="tag.id"
+                :to="{ path: '/', query: { tagId: tag.id } }"
+                class="pill"
+              >
+                # {{ tag.name }}
+              </RouterLink>
+            </div>
+
+            <img
+              v-if="article.coverImage"
+              :src="article.coverImage"
+              :alt="article.title"
+              class="sheet-cover"
+            />
+          </header>
+
+          <div class="sheet-divider" aria-hidden="true" />
+
+          <div v-if="contentLoading" class="sheet-body-skeleton" aria-hidden="true">
+            <span class="body-skel-line w-full" />
+            <span class="body-skel-line w-11-12" />
+            <span class="body-skel-line w-4-5" />
+            <span class="body-skel-line w-full" />
+            <span class="body-skel-line w-2-3" />
           </div>
-          <h1 class="sheet-title">{{ article.title }}</h1>
-          <div v-if="article.tags?.length" class="sheet-tags">
-            <RouterLink
-              v-for="tag in article.tags"
-              :key="tag.id"
-              :to="{ path: '/', query: { tagId: tag.id } }"
-              class="pill"
-            >
-              # {{ tag.name }}
-            </RouterLink>
-          </div>
-          <img
-            v-if="article.coverImage"
-            :src="article.coverImage"
-            :alt="article.title"
-            class="sheet-cover"
-          />
-        </header>
 
-        <div
-          ref="markdownBodyRef"
-          class="markdown-body"
-          v-html="rendered.html"
-          @click="handleMarkdownClick"
-          @mouseover="handleMarkdownHover"
-          @mouseout="handleMarkdownLeave"
-          @mouseup="scheduleSelectionCheck"
-          @touchend="scheduleSelectionCheck"
-          @keyup="scheduleSelectionCheck"
-        />
-
-        <div class="like-box">
-          <button
-            type="button"
-            class="btn btn-primary like-btn"
-            :class="{ 'is-bursting': likeBurst, 'is-liked': hasLiked }"
-            :disabled="liking"
-            @click="handleLike"
-          >
-            <span>{{ hasLiked ? "已点赞支持" : "点赞支持" }}（{{ article.likeCount }}）</span>
-          </button>
-          <span v-if="likeHint" class="like-hint">{{ likeHint }}</span>
-        </div>
-
-        <nav v-if="article.prevArticle || article.nextArticle" class="neighbor-nav">
-          <RouterLink
-            v-if="article.prevArticle"
-            :to="`/article/${article.prevArticle.id}`"
-            class="neighbor-card"
-          >
-            <span class="neighbor-label">上一篇</span>
-            <span class="neighbor-title">{{ article.prevArticle.title }}</span>
-          </RouterLink>
-          <div v-else />
-          <RouterLink
-            v-if="article.nextArticle"
-            :to="`/article/${article.nextArticle.id}`"
-            class="neighbor-card neighbor-card--right"
-          >
-            <span class="neighbor-label">下一篇</span>
-            <span class="neighbor-title">{{ article.nextArticle.title }}</span>
-          </RouterLink>
-        </nav>
-      </article>
-
-      <section class="card comment-section animate-rise" style="--stagger: 1">
-        <div class="comment-section-head">
-          <h3 class="section-title">
-            {{ giscusConfigured ? "GitHub 讨论区" : `评论交流（${article.commentCount}）` }}
-          </h3>
-          <span v-if="giscusConfigured" class="section-sub-badge">
-            使用 GitHub 账号免填资料直接参与讨论
-          </span>
-          <span v-else-if="siteInfo?.giscusEnabled === '1'" class="section-sub-badge">
-            GitHub 讨论区参数未完善，当前使用极简本地评论
-          </span>
-        </div>
-
-        <div v-if="article.allowComment === 0" class="comment-closed">该文章暂未开启评论</div>
-
-        <template v-else-if="giscusConfigured">
-          <GiscusComments
-            :repo="siteInfo!.giscusRepo!"
-            :repo-id="siteInfo!.giscusRepoId!"
-            :category="siteInfo?.giscusCategory"
-            :category-id="siteInfo!.giscusCategoryId!"
-            :mapping="siteInfo?.giscusMapping || 'pathname'"
-            :term="String(article.id)"
+          <div
+            v-else
+            ref="markdownBodyRef"
+            class="markdown-body"
+            v-html="rendered.html"
+            @click="handleMarkdownClick"
+            @mouseover="handleMarkdownHover"
+            @mouseout="handleMarkdownLeave"
+            @mouseup="scheduleSelectionCheck"
+            @touchend="scheduleSelectionCheck"
+            @keyup="scheduleSelectionCheck"
           />
 
-          <div v-if="inlineQuotedComments.length" class="inline-summary-block">
-            <h4 class="inline-summary-title">正文划词批注（{{ inlineQuotedComments.length }}）</h4>
-            <div class="comment-list">
+          <!-- 文末连贯作者落款与纯黑白线条圆形互动按钮 -->
+          <div class="article-signoff">
+            <div class="signoff-row">
+              <div class="signoff-author">
+                <img
+                  v-if="siteInfo?.authorAvatar"
+                  :src="siteInfo.authorAvatar"
+                  :alt="siteInfo.authorName"
+                  class="signoff-avatar"
+                />
+                <span v-else class="signoff-avatar signoff-avatar--fallback">
+                  {{ (siteInfo?.authorName || "博").slice(0, 1) }}
+                </span>
+                <div class="signoff-meta">
+                  <div class="signoff-name">{{ siteInfo?.authorName || "博主" }}</div>
+                  <p class="signoff-bio">
+                    {{ siteInfo?.authorBio || "感谢阅读，欢迎划词批注或前往下方讨论区交流。" }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="signoff-actions">
+                <div class="mono-circle-item">
+                  <button
+                    type="button"
+                    class="mono-circle-btn"
+                    :class="{ 'is-liked': hasLiked, 'is-bursting': likeBurst }"
+                    :disabled="liking"
+                    :title="hasLiked ? '已点赞支持' : '点赞支持'"
+                    :aria-label="hasLiked ? '已点赞支持' : '点赞支持'"
+                    @click="handleLike"
+                  >
+                    <svg viewBox="0 0 24 24" class="mono-icon" aria-hidden="true">
+                      <path d="M7 10v12" />
+                      <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+                    </svg>
+                  </button>
+                  <span class="mono-circle-caption">{{ article.likeCount }}</span>
+                </div>
+
+                <div class="mono-circle-item">
+                  <button
+                    type="button"
+                    class="mono-circle-btn"
+                    :class="{ 'is-active': shareCopied }"
+                    :title="shareCopied ? '链接已复制' : '复制链接分享'"
+                    :aria-label="shareCopied ? '链接已复制' : '分享文章'"
+                    @click="copyArticleUrl"
+                  >
+                    <svg v-if="shareCopied" viewBox="0 0 24 24" class="mono-icon" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" class="mono-icon" aria-hidden="true">
+                      <circle cx="18" cy="5" r="3" />
+                      <circle cx="6" cy="12" r="3" />
+                      <circle cx="18" cy="19" r="3" />
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                    </svg>
+                  </button>
+                  <span class="mono-circle-caption">{{ shareCopied ? "已复制" : "分享" }}</span>
+                </div>
+              </div>
+            </div>
+            <p v-if="likeHint" class="like-hint">{{ likeHint }}</p>
+          </div>
+
+          <nav v-if="article.prevArticle || article.nextArticle" class="neighbor-nav">
+            <RouterLink
+              v-if="article.prevArticle"
+              :to="`/article/${article.prevArticle.id}`"
+              class="neighbor-card"
+            >
+              <span class="neighbor-label">上一篇</span>
+              <span class="neighbor-title">{{ article.prevArticle.title }}</span>
+            </RouterLink>
+            <div v-else />
+            <RouterLink
+              v-if="article.nextArticle"
+              :to="`/article/${article.nextArticle.id}`"
+              class="neighbor-card neighbor-card--right"
+            >
+              <span class="neighbor-label">下一篇</span>
+              <span class="neighbor-title">{{ article.nextArticle.title }}</span>
+            </RouterLink>
+          </nav>
+        </article>
+
+        <section
+          id="article-comments"
+          class="card comment-section"
+          :class="{ 'animate-rise': !seededFromMorph }"
+          style="--stagger: 1"
+        >
+          <div class="comment-section-head">
+            <h3 class="section-title">
+              {{ giscusConfigured ? "GitHub 讨论区" : `评论交流（${article.commentCount}）` }}
+            </h3>
+            <span v-if="giscusConfigured" class="section-sub-badge">
+              使用 GitHub 账号直接参与讨论
+            </span>
+            <span v-else-if="siteInfo?.giscusEnabled === '1'" class="section-sub-badge">
+              GitHub 讨论区参数未完善，当前使用极简本地评论
+            </span>
+          </div>
+
+          <div v-if="article.allowComment === 0" class="comment-closed">该文章暂未开启评论</div>
+
+          <template v-else-if="giscusConfigured">
+            <GiscusComments
+              :repo="siteInfo!.giscusRepo!"
+              :repo-id="siteInfo!.giscusRepoId!"
+              :category="siteInfo?.giscusCategory"
+              :category-id="siteInfo!.giscusCategoryId!"
+              :mapping="siteInfo?.giscusMapping || 'pathname'"
+              :term="String(article.id)"
+            />
+
+            <div v-if="inlineQuotedComments.length" class="inline-summary-block">
+              <h4 class="inline-summary-title">
+                正文划词批注（{{ inlineQuotedComments.length }}）
+              </h4>
+              <div class="comment-list">
+                <CommentItem
+                  v-for="item in inlineQuotedComments"
+                  :key="item.id"
+                  :comment="item"
+                  @reply="openReplyInAnnotation"
+                  @locate="locateAnnotationComment"
+                />
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
+            <form class="comment-form" @submit.prevent="submitComment">
+              <div v-if="replyTarget" class="reply-banner">
+                <span>正在回复 @{{ replyTarget.nickname }}</span>
+                <button type="button" class="cancel-reply" @click="replyTarget = null">
+                  取消回复
+                </button>
+              </div>
+              <textarea
+                v-model="commentForm.content"
+                required
+                rows="3"
+                maxlength="1000"
+                placeholder="写下你的想法，只需填写内容即可发布（支持 Ctrl + Enter 提交）..."
+                class="textarea-field"
+                @keydown.ctrl.enter.prevent="submitComment"
+                @keydown.meta.enter.prevent="submitComment"
+              />
+              <div class="minimal-form-bar">
+                <input
+                  v-model="commentForm.nickname"
+                  type="text"
+                  maxlength="64"
+                  placeholder="昵称（选填，默认匿名读者）"
+                  class="input-field input-field--nickname"
+                />
+                <div class="minimal-form-actions">
+                  <span v-if="commentNotice" class="notice-text">{{ commentNotice }}</span>
+                  <button type="submit" class="btn btn-primary" :disabled="submittingComment">
+                    {{ submittingComment ? "提交中..." : "发表评论" }}
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <div v-if="!comments.length" class="no-comments">还没有评论，来写下第一条想法吧</div>
+            <div v-else class="comment-list">
               <CommentItem
-                v-for="item in inlineQuotedComments"
+                v-for="item in comments"
                 :key="item.id"
                 :comment="item"
-                @reply="openReplyInAnnotation"
+                @reply="handleReply"
                 @locate="locateAnnotationComment"
               />
             </div>
-          </div>
-        </template>
+          </template>
+        </section>
+      </main>
 
-        <template v-else>
-          <form class="comment-form" @submit.prevent="submitComment">
-            <div v-if="replyTarget" class="reply-banner">
-              <span>正在回复 @{{ replyTarget.nickname }}</span>
-              <button type="button" class="cancel-reply" @click="replyTarget = null">取消回复</button>
-            </div>
-            <textarea
-              v-model="commentForm.content"
-              required
-              rows="3"
-              maxlength="1000"
-              placeholder="写下你的想法，只需填写内容即可发布（支持 Ctrl + Enter 提交）..."
-              class="textarea-field"
-              @keydown.ctrl.enter.prevent="submitComment"
-              @keydown.meta.enter.prevent="submitComment"
-            />
-            <div class="minimal-form-bar">
-              <input
-                v-model="commentForm.nickname"
-                type="text"
-                maxlength="64"
-                placeholder="昵称（选填，默认匿名读者）"
-                class="input-field input-field--nickname"
-              />
-              <div class="minimal-form-actions">
-                <span v-if="commentNotice" class="notice-text">{{ commentNotice }}</span>
-                <button type="submit" class="btn btn-primary" :disabled="submittingComment">
-                  {{ submittingComment ? "提交中..." : "发表评论" }}
+      <!-- 桌面端右侧栏：互动工具 + 文章大纲固定悬浮 -->
+      <aside class="toc-aside">
+        <div class="side-sticky-stack">
+          <div
+            class="card aside-actions-card"
+            :class="{ 'animate-rise': !seededFromMorph }"
+            style="--stagger: 1"
+          >
+            <div class="aside-mono-row">
+              <div class="mono-circle-item">
+                <button
+                  type="button"
+                  class="mono-circle-btn"
+                  :class="{ 'is-liked': hasLiked, 'is-bursting': likeBurst }"
+                  :disabled="liking"
+                  :title="hasLiked ? '已点赞支持' : '点赞支持'"
+                  :aria-label="hasLiked ? '已点赞支持' : '点赞支持'"
+                  @click="handleLike"
+                >
+                  <svg viewBox="0 0 24 24" class="mono-icon" aria-hidden="true">
+                    <path d="M7 10v12" />
+                    <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+                  </svg>
                 </button>
+                <span class="mono-circle-caption">{{ article.likeCount }}</span>
+              </div>
+
+              <div class="mono-circle-item">
+                <button
+                  type="button"
+                  class="mono-circle-btn"
+                  :class="{ 'is-active': shareCopied }"
+                  :title="shareCopied ? '链接已复制' : '复制链接分享'"
+                  :aria-label="shareCopied ? '链接已复制' : '分享文章'"
+                  @click="copyArticleUrl"
+                >
+                  <svg v-if="shareCopied" viewBox="0 0 24 24" class="mono-icon" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" class="mono-icon" aria-hidden="true">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
+                </button>
+                <span class="mono-circle-caption">{{ shareCopied ? "已复制" : "分享" }}</span>
               </div>
             </div>
-          </form>
 
-          <div v-if="!comments.length" class="no-comments">还没有评论，来写下第一条想法吧</div>
-          <div v-else class="comment-list">
-            <CommentItem
-              v-for="item in comments"
-              :key="item.id"
-              :comment="item"
-              @reply="handleReply"
-              @locate="locateAnnotationComment"
-            />
-          </div>
-        </template>
-      </section>
-    </main>
-
-    <!-- 桌面端右侧目录吸顶（内部可滚动，带阅读高亮） -->
-    <aside v-if="rendered.toc.length" class="toc-aside">
-      <div class="card toc-card animate-rise" style="--stagger: 1">
-        <h4 class="toc-title">文章目录</h4>
-        <ul class="toc-list">
-          <li
-            v-for="heading in rendered.toc"
-            :key="heading.id"
-            :style="{ paddingLeft: `${(heading.level - 1) * 12}px` }"
-          >
-            <a
-              :href="`#${heading.id}`"
-              class="toc-link"
-              :class="{ active: activeHeadingId === heading.id }"
-              @click.prevent="scrollToHeading(heading.id)"
-            >
-              {{ heading.text }}
-            </a>
-          </li>
-        </ul>
-      </div>
-    </aside>
-
-    <!-- 移动端悬浮目录唤起按钮 + 磨砂抽屉 -->
-    <button
-      v-if="rendered.toc.length"
-      type="button"
-      class="mobile-toc-btn card"
-      @click="mobileTocOpen = true"
-    >
-      目录
-    </button>
-
-    <Transition name="route-fade">
-      <div v-if="mobileTocOpen" class="mobile-toc-mask" @click.self="mobileTocOpen = false">
-        <div class="card mobile-toc-drawer">
-          <div class="mobile-toc-header">
-            <h4 class="toc-title">文章目录</h4>
-            <button type="button" class="pill" @click="mobileTocOpen = false">关闭</button>
-          </div>
-          <ul class="toc-list">
-            <li
-              v-for="heading in rendered.toc"
-              :key="heading.id"
-              :style="{ paddingLeft: `${(heading.level - 1) * 12}px` }"
-            >
-              <a
-                :href="`#${heading.id}`"
-                class="toc-link"
-                :class="{ active: activeHeadingId === heading.id }"
-                @click.prevent="scrollToHeading(heading.id)"
+            <div class="aside-quick-row">
+              <button
+                type="button"
+                class="aside-quick-btn"
+                :class="{ 'is-active': annotationThreads.length > 0 }"
+                :disabled="!annotationThreads.length"
+                :title="annotationThreads.length ? '查看正文划词批注' : '选中正文文字即可批注'"
+                @click="openFirstAnnotation"
               >
-                {{ heading.text }}
-              </a>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </Transition>
+                批注 {{ annotationThreads.length }}
+              </button>
 
-    <!-- 划词浮动操作胶囊 -->
-    <Transition name="route-fade">
-      <div
-        v-if="selectionMenu"
-        class="selection-floating-pill card"
-        :style="{ left: `${selectionMenu.left}px`, top: `${selectionMenu.top}px` }"
-        @mousedown.prevent
+              <button
+                type="button"
+                class="aside-quick-btn"
+                @click="scrollToComments"
+              >
+                直达讨论区
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="rendered.toc.length"
+            class="card toc-rail"
+            :class="{ 'animate-rise': !seededFromMorph }"
+            style="--stagger: 2"
+          >
+            <div class="toc-rail-title">文章大纲</div>
+            <ul class="toc-list">
+              <li
+                v-for="heading in rendered.toc"
+                :key="heading.id"
+                :style="{ paddingLeft: `${Math.max(0, heading.level - tocBaseLevel) * 14}px` }"
+              >
+                <a
+                  :href="`#${heading.id}`"
+                  class="toc-link"
+                  :class="{ active: activeHeadingId === heading.id }"
+                  @click.prevent="scrollToHeading(heading.id)"
+                >
+                  {{ heading.text }}
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 移动端悬浮目录唤起按钮 + 磨砂抽屉 -->
+      <button
+        v-if="rendered.toc.length"
+        type="button"
+        class="mobile-toc-btn card"
+        @click="mobileTocOpen = true"
       >
-        <span v-if="selectionMenu.anchor.tooLong" class="selection-too-long">
+        目录
+      </button>
+
+      <Transition name="route-fade">
+        <div v-if="mobileTocOpen" class="mobile-toc-mask" @click.self="mobileTocOpen = false">
+          <div class="card mobile-toc-drawer">
+            <div class="mobile-toc-header">
+              <h4 class="toc-title">文章大纲</h4>
+              <button type="button" class="pill" @click="mobileTocOpen = false">关闭</button>
+            </div>
+            <ul class="toc-list">
+              <li
+                v-for="heading in rendered.toc"
+                :key="heading.id"
+                :style="{ paddingLeft: `${Math.max(0, heading.level - tocBaseLevel) * 14}px` }"
+              >
+                <a
+                  :href="`#${heading.id}`"
+                  class="toc-link"
+                  :class="{ active: activeHeadingId === heading.id }"
+                  @click.prevent="scrollToHeading(heading.id)"
+                >
+                  {{ heading.text }}
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- 划词浮动操作按钮 -->
+      <Transition name="route-fade">
+        <span
+          v-if="selectionMenu && selectionMenu.anchor.tooLong"
+          class="selection-floating-pill selection-too-long"
+          :style="{ left: `${selectionMenu.left}px`, top: `${selectionMenu.top}px` }"
+          @mousedown.prevent
+        >
           单次划词最多 500 字，请缩减选区
         </span>
         <button
-          v-else
+          v-else-if="selectionMenu"
           type="button"
-          class="btn btn-primary selection-action-btn"
+          class="btn btn-primary selection-floating-pill selection-action-btn"
+          :style="{ left: `${selectionMenu.left}px`, top: `${selectionMenu.top}px` }"
+          @mousedown.prevent
           @click="openInlineComposerFromSelection"
         >
           评论所选文字
         </button>
-      </div>
-    </Transition>
+      </Transition>
 
-    <!-- 划词批注查看浮层 -->
-    <Transition name="route-fade">
-      <div v-if="viewerOpen" class="annotation-mask" @click.self="closeAnnotationViewer">
-        <div class="card annotation-modal">
-          <div class="annotation-modal-header">
-            <div>
-              <h4 class="annotation-modal-title">
-                划词批注（共 {{ activeViewerComments.length }} 条主题）
-              </h4>
-              <p v-if="activeViewerAnchor?.quoteText" class="annotation-quote-preview">
-                引用原文：“{{ activeViewerAnchor.quoteText }}”
-              </p>
+      <!-- 划词批注查看浮层 -->
+      <Transition name="route-fade">
+        <div v-if="viewerOpen" class="annotation-mask" @click.self="closeAnnotationViewer">
+          <div class="card annotation-modal">
+            <div class="annotation-modal-header">
+              <div>
+                <h4 class="annotation-modal-title">
+                  划词批注（共 {{ activeViewerComments.length }} 条主题）
+                </h4>
+                <p v-if="activeViewerAnchor?.quoteText" class="annotation-quote-preview">
+                  引用原文：“{{ activeViewerAnchor.quoteText }}”
+                </p>
+              </div>
+              <button type="button" class="pill" @click="closeAnnotationViewer">关闭</button>
             </div>
-            <button type="button" class="pill" @click="closeAnnotationViewer">关闭</button>
-          </div>
 
-          <div class="annotation-thread-list">
-            <div v-for="thread in activeViewerComments" :key="thread.id" class="annotation-thread">
-              <CommentItem
-                :comment="thread"
-                @reply="openReplyInAnnotation"
-                @locate="jumpToCommentSection"
-              />
-              <div class="annotation-thread-actions">
-                <button
-                  type="button"
-                  class="annotation-text-btn"
-                  @click="jumpToCommentSection(thread)"
-                >
-                  在文末评论区查看
-                </button>
+            <div class="annotation-thread-list">
+              <div v-for="thread in activeViewerComments" :key="thread.id" class="annotation-thread">
+                <CommentItem
+                  :comment="thread"
+                  @reply="openReplyInAnnotation"
+                  @locate="jumpToCommentSection"
+                />
+                <div class="annotation-thread-actions">
+                  <button
+                    type="button"
+                    class="annotation-text-btn"
+                    @click="jumpToCommentSection(thread)"
+                  >
+                    在文末评论区查看
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div v-if="article.allowComment !== 0 && activeViewerAnchor" class="annotation-modal-footer">
-            <button
-              type="button"
-              class="btn btn-primary"
-              @click="openComposerFromViewer"
+            <div
+              v-if="article.allowComment !== 0 && activeViewerAnchor"
+              class="annotation-modal-footer"
             >
-              针对此段补充新评论
-            </button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- 划词评论发表浮层 -->
-    <Transition name="route-fade">
-      <div v-if="inlineComposerOpen" class="annotation-mask" @click.self="closeInlineComposer">
-        <div class="card annotation-modal annotation-modal--compact">
-          <div class="annotation-modal-header">
-            <h4 class="annotation-modal-title">
-              {{ inlineReplyTarget ? `回复 @${inlineReplyTarget.nickname}` : "发表划词评论" }}
-            </h4>
-            <button type="button" class="pill" @click="closeInlineComposer">取消</button>
-          </div>
-
-          <div v-if="activeComposerAnchor?.quoteText" class="composer-quote-box">
-            <span class="composer-quote-label">引用原文</span>
-            <p class="composer-quote-content">{{ activeComposerAnchor.quoteText }}</p>
-          </div>
-
-          <form class="comment-form" @submit.prevent="submitInlineComment">
-            <textarea
-              ref="inlineTextareaRef"
-              v-model="inlineContent"
-              required
-              rows="4"
-              maxlength="1000"
-              placeholder="直接写下针对这段文字的批注（支持 Ctrl + Enter 提交）..."
-              class="textarea-field"
-              @keydown.ctrl.enter.prevent="submitInlineComment"
-              @keydown.meta.enter.prevent="submitInlineComment"
-            />
-            <div class="minimal-form-bar">
-              <input
-                v-model="commentForm.nickname"
-                type="text"
-                maxlength="64"
-                placeholder="昵称（选填，默认匿名读者）"
-                class="input-field input-field--nickname"
-              />
-              <div class="minimal-form-actions">
-                <span v-if="inlineNotice" class="notice-text">{{ inlineNotice }}</span>
-                <button type="submit" class="btn btn-primary" :disabled="submittingInline">
-                  {{ submittingInline ? "提交中..." : "提交批注" }}
-                </button>
-              </div>
+              <button
+                type="button"
+                class="btn btn-primary"
+                @click="openComposerFromViewer"
+              >
+                针对此段补充新评论
+              </button>
             </div>
-          </form>
+          </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+
+      <!-- 划词评论发表浮层（极简） -->
+      <Transition name="route-fade">
+        <div v-if="inlineComposerOpen" class="annotation-mask" @click.self="closeInlineComposer">
+          <div class="card annotation-modal annotation-modal--compact">
+            <div class="annotation-modal-header">
+              <h4 class="annotation-modal-title">
+                {{ inlineReplyTarget ? `回复 @${inlineReplyTarget.nickname}` : "发表划词评论" }}
+              </h4>
+              <button type="button" class="pill" @click="closeInlineComposer">取消</button>
+            </div>
+
+            <div v-if="activeComposerAnchor?.quoteText" class="composer-quote-box">
+              <span class="composer-quote-label">引用原文</span>
+              <p class="composer-quote-content">{{ activeComposerAnchor.quoteText }}</p>
+            </div>
+
+            <form class="comment-form" @submit.prevent="submitInlineComment">
+              <textarea
+                ref="inlineTextareaRef"
+                v-model="inlineContent"
+                required
+                rows="4"
+                maxlength="1000"
+                placeholder="直接写下针对这段文字的批注（支持 Ctrl + Enter 提交）..."
+                class="textarea-field"
+                @keydown.ctrl.enter.prevent="submitInlineComment"
+                @keydown.meta.enter.prevent="submitInlineComment"
+              />
+              <div class="minimal-form-bar">
+                <input
+                  v-model="commentForm.nickname"
+                  type="text"
+                  maxlength="64"
+                  placeholder="昵称（选填，默认匿名读者）"
+                  class="input-field input-field--nickname"
+                />
+                <div class="minimal-form-actions">
+                  <span v-if="inlineNotice" class="notice-text">{{ inlineNotice }}</span>
+                  <button type="submit" class="btn btn-primary" :disabled="submittingInline">
+                    {{ submittingInline ? "提交中..." : "提交批注" }}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { blogApi, type BlogArticleDetail, type BlogComment } from "@/api/blog";
 import CommentItem from "@/components/CommentItem.vue";
 import GiscusComments from "@/components/GiscusComments.vue";
+import {
+  cacheArticleDetail,
+  getCachedArticleDetail,
+  launchEnterMorph,
+  peekPendingEnter,
+  prefetchArticleDetail,
+  prepareLeaveMorph,
+  updateActiveEnterSheetSnapshot,
+  useArticleTransition,
+} from "@/composables/useArticleTransition";
+import { useNavbarArticle } from "@/composables/useNavbarArticle";
 import { useSiteInfo } from "@/composables/useSiteInfo";
 import { updatePageSeo } from "@/router";
 import { renderMarkdown } from "@/utils/markdown";
@@ -407,9 +615,14 @@ function readLikedIds(): string[] {
 const route = useRoute();
 const router = useRouter();
 const { siteInfo, loadSiteInfo } = useSiteInfo();
+const { setNavbarArticle } = useNavbarArticle();
+const { hiddenDetailSheet } = useArticleTransition();
 const loading = ref(false);
+const contentLoading = ref(false);
+const seededFromMorph = ref(false);
 const errorMsg = ref("");
 const article = ref<BlogArticleDetail | null>(null);
+const articleSheetRef = ref<HTMLElement | null>(null);
 const comments = ref<BlogComment[]>([]);
 
 const giscusConfigured = computed(() =>
@@ -438,11 +651,22 @@ function goBack() {
   }
 }
 
+function formatReadableDate(raw?: string) {
+  if (!raw) return "";
+  const matched = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!matched) return raw.slice(0, 10);
+  return `${matched[1]}年${Number(matched[2])}月${Number(matched[3])}日`;
+}
+
 const likedIds = ref<string[]>(readLikedIds());
 const liking = ref(false);
 const likeBurst = ref(false);
 const likeHint = ref("");
-const hasLiked = computed(() => Boolean(article.value && likedIds.value.includes(article.value.id)));
+const hasLiked = computed(() =>
+  Boolean(article.value && likedIds.value.includes(article.value.id)),
+);
+const shareCopied = ref(false);
+let shareTimer: number | null = null;
 
 const replyTarget = ref<BlogComment | null>(null);
 const submittingComment = ref(false);
@@ -454,6 +678,8 @@ const commentForm = reactive({
 
 const activeHeadingId = ref("");
 const mobileTocOpen = ref(false);
+const titleSentinelRef = ref<HTMLElement | null>(null);
+const titleAbsorbed = ref(false);
 const markdownBodyRef = ref<HTMLElement | null>(null);
 const inlineTextareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -484,7 +710,17 @@ const activeViewerComments = computed(() =>
 let selectionTimer: number | null = null;
 let flashTimer: number | null = null;
 
-const rendered = computed(() => renderMarkdown(article.value?.content || ""));
+const rendered = computed(() =>
+  renderMarkdown(article.value?.content || "", {
+    stripLeadingTitle: article.value?.title,
+  }),
+);
+
+const tocBaseLevel = computed(() => {
+  const items = rendered.value.toc;
+  if (!items.length) return 1;
+  return Math.min(...items.map((item) => item.level));
+});
 
 function syncInlineAnnotations() {
   if (!markdownBodyRef.value) {
@@ -500,15 +736,55 @@ function updateActiveHeading() {
   let current = toc[0].id;
   for (const item of toc) {
     const el = document.getElementById(item.id);
-    if (el && el.getBoundingClientRect().top <= 120) {
+    if (el && el.getBoundingClientRect().top <= 128) {
       current = item.id;
     }
   }
   activeHeadingId.value = current;
 }
 
+function updateTitleAbsorption() {
+  const sentinel = titleSentinelRef.value;
+  if (!sentinel || !article.value) {
+    titleAbsorbed.value = false;
+    setNavbarArticle(null);
+    return;
+  }
+  const rect = sentinel.getBoundingClientRect();
+  const midY = rect.top + rect.height * 0.48;
+  if (!titleAbsorbed.value && midY <= 78) {
+    titleAbsorbed.value = true;
+  } else if (titleAbsorbed.value && midY >= 98) {
+    titleAbsorbed.value = false;
+  }
+  setNavbarArticle({
+    title: article.value.title,
+    category: article.value.categoryName,
+    absorbed: titleAbsorbed.value,
+  });
+}
+
+async function copyArticleUrl() {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    shareCopied.value = true;
+    if (shareTimer !== null) {
+      window.clearTimeout(shareTimer);
+    }
+    shareTimer = window.setTimeout(() => {
+      shareCopied.value = false;
+      shareTimer = null;
+    }, 1800);
+  } catch {
+    // 忽略剪贴板权限拒绝
+  }
+}
+
+function scrollToComments() {
+  document.getElementById("article-comments")?.scrollIntoView({ behavior: "smooth" });
+}
+
 async function loadArticle(id: string) {
-  loading.value = true;
   errorMsg.value = "";
   likeHint.value = "";
   commentNotice.value = "";
@@ -517,19 +793,82 @@ async function loadArticle(id: string) {
   selectionMenu.value = null;
   viewerOpen.value = false;
   inlineComposerOpen.value = false;
+  titleAbsorbed.value = false;
+  setNavbarArticle(null);
+
+  const pendingMorph = peekPendingEnter(id);
+  const cachedDetail = getCachedArticleDetail(id);
+  const hadCachedContent = Boolean(cachedDetail?.content);
+
+  if (pendingMorph) {
+    seededFromMorph.value = true;
+    loading.value = false;
+    contentLoading.value = !cachedDetail;
+    hiddenDetailSheet.value = true;
+
+    const seed: BlogArticleDetail = cachedDetail
+      ? { ...cachedDetail }
+      : {
+          id: pendingMorph.preview.id,
+          title: pendingMorph.preview.title,
+          summary: pendingMorph.preview.summary,
+          coverImage: pendingMorph.preview.coverImage,
+          categoryId: pendingMorph.preview.categoryId,
+          categoryName: pendingMorph.preview.categoryName,
+          tags: pendingMorph.preview.tags || [],
+          isTop: pendingMorph.preview.isTop ?? 0,
+          readingMinutes: pendingMorph.preview.readingMinutes,
+          wordCount: pendingMorph.preview.wordCount,
+          viewCount: pendingMorph.preview.viewCount ?? 0,
+          likeCount: pendingMorph.preview.likeCount ?? 0,
+          commentCount: pendingMorph.preview.commentCount ?? 0,
+          publishTime: pendingMorph.preview.publishTime,
+          createTime: pendingMorph.preview.createTime || "",
+          content: "",
+          allowComment: 1,
+        };
+    article.value = seed;
+    updatePageSeo(seed.title, seed.summary || seed.title);
+    await nextTick();
+    if (articleSheetRef.value) {
+      launchEnterMorph(id, articleSheetRef.value);
+    } else {
+      hiddenDetailSheet.value = false;
+    }
+  } else if (cachedDetail) {
+    seededFromMorph.value = false;
+    loading.value = false;
+    contentLoading.value = false;
+    article.value = { ...cachedDetail };
+    updatePageSeo(cachedDetail.title, cachedDetail.summary || cachedDetail.content.slice(0, 140));
+  } else {
+    seededFromMorph.value = false;
+    loading.value = true;
+    contentLoading.value = false;
+  }
+
   try {
     const [detail, commentList] = await Promise.all([
-      blogApi.getArticleDetail(id),
+      prefetchArticleDetail(id, () => blogApi.getArticleDetail(id)),
       blogApi.getComments(id),
     ]);
     article.value = detail;
+    cacheArticleDetail(detail);
     comments.value = commentList;
+    contentLoading.value = false;
     updatePageSeo(detail.title, detail.summary || detail.content.slice(0, 140));
     await nextTick();
+    if (!hadCachedContent && articleSheetRef.value) {
+      updateActiveEnterSheetSnapshot(articleSheetRef.value);
+    }
     syncInlineAnnotations();
     updateActiveHeading();
+    updateTitleAbsorption();
   } catch (err) {
-    errorMsg.value = err instanceof Error ? err.message : "文章加载失败";
+    if (!article.value) {
+      errorMsg.value = err instanceof Error ? err.message : "文章加载失败";
+    }
+    contentLoading.value = false;
   } finally {
     loading.value = false;
   }
@@ -556,13 +895,22 @@ function scheduleSelectionCheck() {
       selectionMenu.value = null;
       return;
     }
-    const rect = range.getBoundingClientRect();
-    if (!rect.width && !rect.height) {
+    const clientRects = Array.from(range.getClientRects()).filter(
+      (item) => item.width > 0 || item.height > 0,
+    );
+    const boundingRect = range.getBoundingClientRect();
+    const anchorRect = clientRects[clientRects.length - 1] || boundingRect;
+    if (!anchorRect.width && !anchorRect.height) {
       selectionMenu.value = null;
       return;
     }
-    const left = Math.min(Math.max(rect.left + rect.width / 2, 110), window.innerWidth - 110);
-    const top = rect.top >= 88 ? rect.top - 48 : rect.bottom + 10;
+    const buttonWidth = anchor.tooLong ? 228 : 118;
+    const buttonHeight = 36;
+    const left = Math.min(Math.max(anchorRect.right + 6, 16), window.innerWidth - buttonWidth - 16);
+    const top =
+      anchorRect.bottom + 8 + buttonHeight <= window.innerHeight - 12
+        ? anchorRect.bottom + 8
+        : Math.max(76, anchorRect.top - buttonHeight - 8);
     selectionMenu.value = { anchor, left, top };
   }, 16);
 }
@@ -837,6 +1185,7 @@ async function submitInlineComment() {
 
 function handleWindowScroll() {
   updateActiveHeading();
+  updateTitleAbsorption();
   if (selectionMenu.value) {
     selectionMenu.value = null;
   }
@@ -874,6 +1223,12 @@ watch(
   { deep: true, flush: "post" },
 );
 
+onBeforeRouteLeave((to) => {
+  if (to.path === "/" && article.value && articleSheetRef.value) {
+    prepareLeaveMorph(article.value, articleSheetRef.value);
+  }
+});
+
 onMounted(() => {
   loadSiteInfo();
   window.addEventListener("scroll", handleWindowScroll, { passive: true });
@@ -881,6 +1236,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  setNavbarArticle(null);
   window.removeEventListener("scroll", handleWindowScroll);
   document.removeEventListener("mousedown", handleDocumentMouseDown);
   if (selectionTimer !== null) {
@@ -889,92 +1245,408 @@ onUnmounted(() => {
   if (flashTimer !== null) {
     window.clearTimeout(flashTimer);
   }
+  if (shareTimer !== null) {
+    window.clearTimeout(shareTimer);
+  }
 });
 </script>
 
 <style scoped>
+.detail-page {
+  width: 100%;
+}
+
 .state-card {
   padding: 56px 20px;
   text-align: center;
   color: var(--text-muted);
 }
 
+.state-card--centered {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.error-state-text {
+  margin: 0 0 16px;
+}
+
+/* 宽敞两栏阅读布局：左 920px+ 主内容/讨论区 + 右 252px 固定悬浮互动与大纲 */
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 252px;
+  gap: 26px;
   align-items: stretch;
 }
 
 .article-main {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
   min-width: 0;
 }
 
+/* 宽敞透气的阅读纸面 */
 .article-sheet {
-  padding: 30px 34px;
+  padding: 32px 38px 38px;
+  background: var(--morph-surface);
 }
 
+.article-sheet.is-morph-hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none;
+  transition: none !important;
+}
+
+.sheet-body-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 8px 0 24px;
+}
+
+.body-skel-line {
+  display: block;
+  height: 14px;
+  border-radius: 8px;
+  background: var(--bg-subtle);
+}
+
+.body-skel-line.w-full {
+  width: 100%;
+}
+.body-skel-line.w-11-12 {
+  width: 92%;
+}
+.body-skel-line.w-4-5 {
+  width: 80%;
+}
+.body-skel-line.w-2-3 {
+  width: 66%;
+}
+
+.sheet-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.sheet-topbar-left,
+.sheet-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.back-btn {
+  padding: 5px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+.back-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.back-home-link {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.back-home-link:hover {
+  color: var(--accent);
+}
+
+.topbar-cat-pill {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+.topbar-reading-time {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* 开篇 Hero 头部 */
 .sheet-header {
   margin-bottom: 24px;
 }
 
-.sheet-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
+.sheet-title-slot {
+  margin: 0 0 14px;
 }
 
 .sheet-title {
-  margin: 0 0 14px;
-  font-size: 28px;
-  line-height: 1.35;
+  margin: 0;
+  font-size: clamp(25px, 2.8vw, 33px);
+  font-weight: 800;
+  line-height: 1.32;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  transform-origin: left center;
+  transition:
+    opacity 0.26s ease,
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.26s ease;
+}
+
+.sheet-title.is-absorbed {
+  opacity: 0.14;
+  transform: translateY(-10px) scale(0.975);
+  filter: blur(2px);
+}
+
+.sheet-lead {
+  margin: 0 0 18px;
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  font-size: 15px;
+  line-height: 1.78;
+  color: var(--text-secondary);
+}
+
+.sheet-byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.byline-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.byline-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+}
+
+.byline-avatar--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.byline-sep {
+  opacity: 0.55;
+}
+
+.byline-annotation-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.byline-annotation-link:hover {
+  text-decoration: underline;
+}
+
+.byline-tip {
+  color: var(--text-muted);
+  opacity: 0.85;
 }
 
 .sheet-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
 .sheet-cover {
   width: 100%;
   max-height: 360px;
   object-fit: cover;
-  border-radius: 18px;
-  margin-top: 18px;
+  border-radius: 16px;
+  margin-top: 20px;
 }
 
-.like-box {
-  margin-top: 32px;
+.sheet-divider {
+  height: 1px;
+  margin: 0 0 28px;
+  background: linear-gradient(90deg, var(--border-subtle), transparent 90%);
+}
+
+/* 文末连贯作者落款卡 */
+.article-signoff {
+  margin-top: 40px;
   padding-top: 24px;
   border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.signoff-row {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.like-btn {
-  border-radius: 999px;
-  padding: 11px 24px;
+.signoff-author {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1 1 260px;
 }
 
-.like-btn.is-liked {
-  background: var(--bg-subtle);
+.signoff-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+}
+
+.signoff-avatar--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
   color: var(--accent);
-  border: 1px solid var(--accent);
-  box-shadow: none;
+  font-weight: 700;
 }
 
-.like-btn.is-bursting {
+.signoff-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.signoff-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.signoff-bio {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.signoff-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+/* 纯黑白色线条圆形表情按钮 */
+.mono-circle-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.mono-circle-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(17, 17, 17, 0.28);
+  background: #ffffff;
+  color: #111111;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.mono-circle-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: #111111;
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.22);
+}
+
+.mono-circle-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.mono-circle-btn.is-liked,
+.mono-circle-btn.is-active {
+  background: #111111;
+  color: #ffffff;
+  border-color: #111111;
+}
+
+.mono-circle-btn.is-bursting {
   animation: likePop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html.dark .mono-circle-btn {
+  background: #111111;
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+html.dark .mono-circle-btn:hover:not(:disabled) {
+  border-color: #ffffff;
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.68);
+}
+
+html.dark .mono-circle-btn.is-liked,
+html.dark .mono-circle-btn.is-active {
+  background: #ffffff;
+  color: #111111;
+  border-color: #ffffff;
+}
+
+.mono-icon {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mono-circle-caption {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1;
 }
 
 @keyframes likePop {
@@ -982,7 +1654,7 @@ onUnmounted(() => {
     transform: scale(1);
   }
   40% {
-    transform: scale(1.16) rotate(-4deg);
+    transform: scale(1.12) rotate(-3deg);
   }
   100% {
     transform: scale(1);
@@ -990,12 +1662,14 @@ onUnmounted(() => {
 }
 
 .like-hint {
+  margin: 0;
   font-size: 13px;
   color: var(--accent);
 }
 
+/* 上下篇导航（支持 2 行完整标题） */
 .neighbor-nav {
-  margin-top: 26px;
+  margin-top: 24px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -1004,9 +1678,9 @@ onUnmounted(() => {
 .neighbor-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: var(--radius-inner);
   border: 1px solid var(--border-subtle);
   background: var(--bg-subtle);
   transition: transform 0.2s ease, border-color 0.2s ease;
@@ -1028,14 +1702,18 @@ onUnmounted(() => {
 
 .neighbor-title {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
+/* 讨论区卡片 */
 .comment-section {
-  padding: 26px 30px;
+  padding: 28px 36px;
+  background: var(--bg-glass-strong);
 }
 
 .comment-section-head {
@@ -1047,8 +1725,9 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
-.comment-section-head .section-title {
+.section-title {
   margin: 0;
+  font-size: 18px;
 }
 
 .section-sub-badge {
@@ -1092,23 +1771,20 @@ onUnmounted(() => {
   margin-left: auto;
 }
 
-.section-title {
-  margin: 0 0 16px;
-  font-size: 18px;
-}
-
 .comment-closed,
 .no-comments {
-  padding: 20px 0;
-  text-align: center;
+  padding: 18px;
+  border-radius: var(--radius-inner);
+  background: var(--bg-subtle);
   color: var(--text-muted);
+  text-align: center;
   font-size: 14px;
 }
 
 .comment-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 20px;
 }
 
@@ -1116,8 +1792,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 14px;
-  border-radius: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
   background: var(--accent-soft);
   color: var(--accent);
   font-size: 13px;
@@ -1131,17 +1807,11 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
 .input-field,
 .textarea-field {
   width: 100%;
   border: 1px solid var(--border-subtle);
-  border-radius: 14px;
+  border-radius: var(--radius-inner);
   background: var(--bg-subtle);
   color: var(--text-primary);
   padding: 10px 14px;
@@ -1155,86 +1825,99 @@ onUnmounted(() => {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.form-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
 .notice-text {
   font-size: 13px;
   color: var(--accent);
 }
 
+/* 右侧固定悬浮互动卡片 + 文章大纲卡片 */
 .toc-aside {
   min-width: 0;
 }
 
-.toc-card {
+.side-sticky-stack {
   position: sticky;
   top: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   max-height: calc(100vh - 96px);
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 18px;
+  padding: 4px 6px 12px;
+  margin: -4px -6px;
 }
 
-.error-state-text {
-  margin: 0 0 16px;
+.side-sticky-stack::-webkit-scrollbar {
+  display: none;
 }
 
-.sheet-topbar {
+.aside-actions-card {
+  padding: 14px 12px 12px;
+  border-radius: var(--radius-card);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 14px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.sheet-topbar-left {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
 }
 
-.back-btn {
-  padding: 6px 14px;
-  border-radius: 999px;
+.aside-mono-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-evenly;
+  gap: 12px;
+}
+
+.aside-quick-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.aside-quick-btn {
+  padding: 7px 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-subtle);
   background: var(--bg-subtle);
   color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
 }
 
-.back-btn:hover {
+.aside-quick-btn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.aside-quick-btn:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.aside-quick-btn.is-active {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
   background: var(--accent-soft);
-}
-
-.back-home-link {
-  font-size: 13px;
-  color: var(--text-muted);
-  transition: color 0.2s ease;
-}
-
-.back-home-link:hover {
   color: var(--accent);
 }
 
-.toc-card::-webkit-scrollbar {
-  display: none;
+.toc-rail {
+  padding: 16px;
+  border-radius: var(--radius-card);
+}
+
+.toc-rail-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
 }
 
 .toc-title {
   margin: 0 0 12px;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .toc-list {
@@ -1243,28 +1926,32 @@ onUnmounted(() => {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .toc-link {
+  position: relative;
   display: block;
   font-size: 13px;
-  padding: 5px 10px;
-  border-radius: 10px;
-  border-left: 2px solid transparent;
-  color: var(--text-secondary);
+  line-height: 1.5;
+  padding: 5px 8px;
+  border-radius: 8px;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  transition: color 0.18s ease, background-color 0.18s ease;
 }
 
-.toc-link:hover,
+.toc-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+}
+
 .toc-link.active {
   color: var(--accent);
+  font-weight: 600;
   background: var(--accent-soft);
-  border-left-color: var(--accent);
-  font-weight: 500;
 }
 
 .mobile-toc-btn {
@@ -1275,6 +1962,7 @@ onUnmounted(() => {
   z-index: 60;
   padding: 9px 14px;
   border-radius: 999px;
+  corner-shape: round;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -1308,30 +1996,31 @@ onUnmounted(() => {
   margin-bottom: 12px;
 }
 
-.meta-annotation-btn {
-  color: var(--accent);
-  border-color: rgba(13, 148, 136, 0.35);
-}
-
+/* 划词交互按钮（直接定位在选区右下方，不带外层方形卡片背景） */
 .selection-floating-pill {
   position: fixed;
-  transform: translateX(-50%);
   z-index: 85;
-  padding: 5px;
-  border-radius: 999px;
-  background: var(--bg-glass-strong);
-  box-shadow: var(--shadow-glass-hover);
+  margin: 0;
 }
 
 .selection-action-btn {
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
   border-radius: 999px;
+  box-shadow: 0 8px 22px -4px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .selection-too-long {
-  display: inline-block;
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
   font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
@@ -1448,7 +2137,7 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 920px) {
   .detail-grid {
     grid-template-columns: 1fr;
   }
@@ -1465,14 +2154,33 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .article-sheet,
+  .article-sheet {
+    padding: 22px 20px 26px;
+  }
+
   .comment-section {
     padding: 20px;
   }
 
-  .form-row,
   .neighbor-nav {
     grid-template-columns: 1fr;
+  }
+}
+
+@supports (corner-shape: squircle) {
+  .neighbor-card,
+  .comment-closed,
+  .no-comments,
+  .reply-banner,
+  .input-field,
+  .textarea-field,
+  .aside-quick-btn,
+  .toc-link {
+    corner-shape: squircle;
+  }
+
+  .selection-action-btn {
+    corner-shape: round;
   }
 }
 </style>

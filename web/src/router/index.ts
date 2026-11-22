@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { getHomeReturnScrollY } from "@/composables/useArticleTransition";
 import HomeView from "@/views/HomeView.vue";
 
 const DEFAULT_TITLE = "MyBlog · 个人技术博客";
@@ -17,7 +18,20 @@ export function updatePageSeo(title?: string, description?: string) {
 
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, from, savedPosition) {
+    if (to.path === "/" && from.path.startsWith("/article/")) {
+      const cachedScrollY = getHomeReturnScrollY(to.fullPath);
+      if (cachedScrollY !== null) {
+        return { top: cachedScrollY, behavior: "instant" };
+      }
+      if (savedPosition) {
+        return { ...savedPosition, behavior: "instant" };
+      }
+      return { top: 0, behavior: "instant" };
+    }
+    if (to.path.startsWith("/article/")) {
+      return { top: 0, behavior: "instant" };
+    }
     if (savedPosition) return savedPosition;
     return { top: 0 };
   },

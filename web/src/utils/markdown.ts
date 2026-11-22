@@ -16,7 +16,6 @@ import sql from "highlight.js/lib/languages/sql";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
-import "highlight.js/styles/github-dark.css";
 import { Marked, type Tokens } from "marked";
 
 hljs.registerLanguage("bash", bash);
@@ -47,9 +46,41 @@ export interface RenderedMarkdown {
   toc: TocItem[];
 }
 
-export function renderMarkdown(markdown: string): RenderedMarkdown {
+export interface RenderMarkdownOptions {
+  stripLeadingTitle?: string;
+}
+
+function removeDuplicateLeadingHeading(markdown: string, articleTitle?: string): string {
+  const source = markdown || "";
+  if (!articleTitle?.trim()) return source;
+  const trimmedTitle = articleTitle.trim().toLowerCase();
+  const lines = source.split(/\r?\n/);
+  let firstNonEmptyIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) {
+      firstNonEmptyIdx = i;
+      break;
+    }
+  }
+  if (firstNonEmptyIdx === -1) return source;
+  const match = lines[firstNonEmptyIdx].match(/^#\s+(.+?)\s*#*$/);
+  if (match && match[1].trim().toLowerCase() === trimmedTitle) {
+    lines.splice(firstNonEmptyIdx, 1);
+    while (lines[firstNonEmptyIdx] !== undefined && !lines[firstNonEmptyIdx].trim()) {
+      lines.splice(firstNonEmptyIdx, 1);
+    }
+    return lines.join("\n");
+  }
+  return source;
+}
+
+export function renderMarkdown(
+  markdown: string,
+  options?: RenderMarkdownOptions,
+): RenderedMarkdown {
   const toc: TocItem[] = [];
   let headingSeq = 0;
+  const normalizedSource = removeDuplicateLeadingHeading(markdown, options?.stripLeadingTitle);
 
   const marked = new Marked({
     gfm: true,
@@ -73,7 +104,7 @@ export function renderMarkdown(markdown: string): RenderedMarkdown {
     },
   });
 
-  const raw = marked.parse(markdown || "") as string;
+  const raw = marked.parse(normalizedSource) as string;
   return {
     html: DOMPurify.sanitize(raw, {
       ADD_TAGS: ["button"],

@@ -106,7 +106,7 @@ public class BlogDashboardServiceImpl implements BlogDashboardService {
         String normalizedBase = normalizeBaseUrl(baseUrl);
         BlogConfigForm config = blogConfigService.getConfigForm();
         List<BlogArticle> articles = blogArticleMapper.selectList(new LambdaQueryWrapper<BlogArticle>()
-                .select(BlogArticle::getId, BlogArticle::getTitle, BlogArticle::getSummary,
+                .select(BlogArticle::getId, BlogArticle::getSlug, BlogArticle::getTitle, BlogArticle::getSummary,
                         BlogArticle::getPublishTime, BlogArticle::getCreateTime)
                 .eq(BlogArticle::getStatus, ArticleStatusEnum.PUBLISHED.getValue())
                 .orderByDesc(BlogArticle::getPublishTime, BlogArticle::getId)
@@ -125,7 +125,8 @@ public class BlogDashboardServiceImpl implements BlogDashboardService {
             String pubDate = pub != null
                     ? pub.atZone(CHINA_ZONE).format(DateTimeFormatter.RFC_1123_DATE_TIME)
                     : "";
-            String articleUrl = normalizedBase + "/article/" + article.getId();
+            String articleKey = StrUtil.blankToDefault(StrUtil.trim(article.getSlug()), String.valueOf(article.getId()));
+            String articleUrl = normalizedBase + "/article/" + articleKey;
             sb.append("    <item>\n");
             sb.append("      <title>").append(escapeXml(article.getTitle())).append("</title>\n");
             sb.append("      <link>").append(escapeXml(articleUrl)).append("</link>\n");
@@ -145,7 +146,7 @@ public class BlogDashboardServiceImpl implements BlogDashboardService {
     public String buildSitemapXml(String baseUrl) {
         String normalizedBase = normalizeBaseUrl(baseUrl);
         List<BlogArticle> articles = blogArticleMapper.selectList(new LambdaQueryWrapper<BlogArticle>()
-                .select(BlogArticle::getId, BlogArticle::getUpdateTime, BlogArticle::getPublishTime)
+                .select(BlogArticle::getId, BlogArticle::getSlug, BlogArticle::getUpdateTime, BlogArticle::getPublishTime)
                 .eq(BlogArticle::getStatus, ArticleStatusEnum.PUBLISHED.getValue())
                 .orderByDesc(BlogArticle::getPublishTime, BlogArticle::getId));
 
@@ -154,12 +155,14 @@ public class BlogDashboardServiceImpl implements BlogDashboardService {
         sb.append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
         appendUrlNode(sb, normalizedBase + "/", null, "daily", "1.0");
         appendUrlNode(sb, normalizedBase + "/archives", null, "weekly", "0.7");
+        appendUrlNode(sb, normalizedBase + "/paths", null, "weekly", "0.8");
         appendUrlNode(sb, normalizedBase + "/links", null, "weekly", "0.6");
         appendUrlNode(sb, normalizedBase + "/about", null, "monthly", "0.6");
         for (BlogArticle article : articles) {
             LocalDateTime mod = article.getUpdateTime() != null ? article.getUpdateTime() : article.getPublishTime();
             String lastmod = mod != null ? mod.toLocalDate().toString() : null;
-            appendUrlNode(sb, normalizedBase + "/article/" + article.getId(), lastmod, "weekly", "0.8");
+            String articleKey = StrUtil.blankToDefault(StrUtil.trim(article.getSlug()), String.valueOf(article.getId()));
+            appendUrlNode(sb, normalizedBase + "/article/" + articleKey, lastmod, "weekly", "0.8");
         }
         sb.append("</urlset>\n");
         return sb.toString();

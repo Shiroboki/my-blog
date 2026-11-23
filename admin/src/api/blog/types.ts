@@ -188,3 +188,56 @@ export interface BlogDashboardStats {
   pendingComments: BlogCommentItem[];
 }
 
+export type MindMapResourceType = "article" | "video" | "webpage";
+
+export interface MindMapResource {
+  id: string;
+  type: MindMapResourceType;
+  title: string;
+  articleId?: string;
+  articleSlug?: string;
+  url?: string;
+  note?: string;
+}
+
+export interface MindMapNode {
+  id: string;
+  label: string;
+  description?: string;
+  tag?: string;
+  collapsed?: boolean;
+  resources: MindMapResource[];
+  children: MindMapNode[];
+}
+
+export interface BlogLearningPathQuery extends PageQuery {
+  keywords?: string;
+  status?: number;
+}
+
+export interface BlogLearningPathItem {
+  id: string;
+  title: string;
+  slug: string;
+  summary?: string;
+  coverColor?: string;
+  treeJson: string;
+  nodeCount: number;
+  resourceCount: number;
+  sort: number;
+  status: number;
+  createTime?: string;
+  updateTime?: string;
+}
+
+export interface BlogLearningPathForm {
+  id?: string;
+  title: string;
+  slug?: string;
+  summary?: string;
+  coverColor?: string;
+  treeJson: string;
+  sort: number;
+  status: number;
+}
+

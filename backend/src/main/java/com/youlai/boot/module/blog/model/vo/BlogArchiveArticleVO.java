@@ -18,6 +18,9 @@ public class BlogArchiveArticleVO {
     @Schema(description = "文章标题")
     private String title;
 
+    @Schema(description = "文章别名")
+    private String slug;
+
     @Schema(description = "分类名称")
     private String categoryName;
 

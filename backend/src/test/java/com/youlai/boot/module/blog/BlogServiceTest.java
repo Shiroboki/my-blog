@@ -10,24 +10,29 @@ import com.youlai.boot.module.blog.mapper.BlogArticleMapper;
 import com.youlai.boot.module.blog.mapper.BlogArticleTagMapper;
 import com.youlai.boot.module.blog.mapper.BlogCategoryMapper;
 import com.youlai.boot.module.blog.mapper.BlogCommentMapper;
+import com.youlai.boot.module.blog.mapper.BlogLearningPathMapper;
 import com.youlai.boot.module.blog.mapper.BlogLinkMapper;
 import com.youlai.boot.module.blog.mapper.BlogTagMapper;
 import com.youlai.boot.module.blog.model.entity.BlogArticle;
 import com.youlai.boot.module.blog.model.entity.BlogArticleTag;
 import com.youlai.boot.module.blog.model.entity.BlogCategory;
 import com.youlai.boot.module.blog.model.entity.BlogComment;
+import com.youlai.boot.module.blog.model.entity.BlogLearningPath;
 import com.youlai.boot.module.blog.model.entity.BlogTag;
 import com.youlai.boot.module.blog.model.form.BlogArticleForm;
 import com.youlai.boot.module.blog.model.form.BlogCommentForm;
 import com.youlai.boot.module.blog.model.form.BlogConfigForm;
+import com.youlai.boot.module.blog.model.form.BlogLearningPathForm;
 import com.youlai.boot.module.blog.model.vo.BlogArticleDetailVO;
 import com.youlai.boot.module.blog.model.vo.BlogCommentVO;
+import com.youlai.boot.module.blog.model.vo.BlogLearningPathVO;
 import com.youlai.boot.module.blog.model.vo.BlogMarkdownExportVO;
 import com.youlai.boot.module.blog.service.BlogConfigService;
 import com.youlai.boot.module.blog.service.impl.BlogArticleServiceImpl;
 import com.youlai.boot.module.blog.service.impl.BlogCategoryServiceImpl;
 import com.youlai.boot.module.blog.service.impl.BlogCommentServiceImpl;
 import com.youlai.boot.module.blog.service.impl.BlogDashboardServiceImpl;
+import com.youlai.boot.module.blog.service.impl.BlogLearningPathServiceImpl;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -73,6 +78,8 @@ class BlogServiceTest {
     @Mock
     private BlogLinkMapper blogLinkMapper;
     @Mock
+    private BlogLearningPathMapper blogLearningPathMapper;
+    @Mock
     private BlogConfigService blogConfigService;
     @Mock
     private StringRedisTemplate stringRedisTemplate;
@@ -88,6 +95,7 @@ class BlogServiceTest {
         TableInfoHelper.initTableInfo(assistant, BlogComment.class);
         TableInfoHelper.initTableInfo(assistant, BlogCategory.class);
         TableInfoHelper.initTableInfo(assistant, BlogTag.class);
+        TableInfoHelper.initTableInfo(assistant, BlogLearningPath.class);
     }
 
     @Test
@@ -160,6 +168,13 @@ class BlogServiceTest {
         when(valueOperations.get(detailKey)).thenReturn(objectMapper.writeValueAsString(first));
         BlogArticleDetailVO second = service.getPublicArticleDetail(1L, "10.0.0.1");
         assertThat(second.getViewCount()).isEqualTo(11L);
+        verify(blogArticleMapper, org.mockito.Mockito.times(1)).incrementViewCount(1L);
+
+        BlogArticle slugLookup = new BlogArticle();
+        slugLookup.setId(1L);
+        when(blogArticleMapper.selectOne(any())).thenReturn(slugLookup);
+        BlogArticleDetailVO prefetched = service.getPublicArticleDetail("welcome-to-myblog", "10.0.0.2", false);
+        assertThat(prefetched.getId()).isEqualTo(1L);
         verify(blogArticleMapper, org.mockito.Mockito.times(1)).incrementViewCount(1L);
     }
 
@@ -344,5 +359,69 @@ class BlogServiceTest {
         assertThatThrownBy(() -> service.submitPublicComment(invalidRangeForm, "127.0.0.1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("划词位置区间无效");
+    }
+
+    @Test
+    void learningPathShouldValidateTreeAndRejectUnsafeUrls() {
+        var service = new BlogLearningPathServiceImpl(
+                blogLearningPathMapper,
+                stringRedisTemplate,
+                objectMapper
+        );
+        doAnswer(invocation -> {
+            BlogLearningPath entity = invocation.getArgument(0);
+            entity.setId(55L);
+            return 1;
+        }).when(blogLearningPathMapper).insert(any(BlogLearningPath.class));
+
+        BlogLearningPathForm form = new BlogLearningPathForm();
+        form.setTitle("后端架构路线");
+        form.setSlug("backend-roadmap");
+        form.setStatus(1);
+        form.setTreeJson("""
+                {
+                  "label": "Java 全栈",
+                  "resources": [
+                    {"type": "article", "title": "基础篇", "articleId": "1"},
+                    {"type": "video", "title": "演示视频", "url": "https://www.bilibili.com/video/BV1mm4y1X7Hc"}
+                  ],
+                  "children": [
+                    {
+                      "label": "数据库与缓存",
+                      "resources": [
+                        {"type": "webpage", "title": "Redis 文档", "url": "redis.io/docs"}
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+                """);
+
+        Long createdId = service.savePath(form);
+        assertThat(createdId).isEqualTo(55L);
+        ArgumentCaptor<BlogLearningPath> captor = ArgumentCaptor.forClass(BlogLearningPath.class);
+        verify(blogLearningPathMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTreeJson()).contains("https://redis.io/docs");
+        verify(stringRedisTemplate).delete(RedisConstants.Blog.LEARNING_PATHS);
+
+        BlogLearningPath saved = captor.getValue();
+        when(blogLearningPathMapper.selectById(55L)).thenReturn(saved);
+        BlogLearningPathVO vo = service.getPublicPath("55");
+        assertThat(vo.getNodeCount()).isEqualTo(2);
+        assertThat(vo.getResourceCount()).isEqualTo(3);
+
+        BlogLearningPathForm unsafeForm = new BlogLearningPathForm();
+        unsafeForm.setTitle("异常测试");
+        unsafeForm.setTreeJson("""
+                {
+                  "label": "根节点",
+                  "resources": [
+                    {"type": "webpage", "title": "XSS", "url": "javascript:alert(1)"}
+                  ]
+                }
+                """);
+        assertThatThrownBy(() -> service.savePath(unsafeForm))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("资源地址无效");
     }
 }

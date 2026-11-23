@@ -108,6 +108,8 @@ public class BlogArticleServiceImpl implements BlogArticleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean saveArticle(BlogArticleForm form) {
+        String normalizedSlug = StrUtil.isBlank(form.getSlug()) ? null : form.getSlug().trim();
+        ensureSlugUnique(normalizedSlug, null);
         BlogArticle entity = new BlogArticle();
         applyArticleForm(entity, form);
         entity.setViewCount(0L);
@@ -130,6 +132,8 @@ public class BlogArticleServiceImpl implements BlogArticleService {
         if (existing == null) {
             throw new BusinessException("文章不存在");
         }
+        String normalizedSlug = StrUtil.isBlank(form.getSlug()) ? null : form.getSlug().trim();
+        ensureSlugUnique(normalizedSlug, id);
         applyArticleForm(existing, form);
         if (Objects.equals(existing.getStatus(), ArticleStatusEnum.PUBLISHED.getValue()) && existing.getPublishTime() == null) {
             existing.setPublishTime(LocalDateTime.now());
@@ -195,14 +199,62 @@ public class BlogArticleServiceImpl implements BlogArticleService {
 
     @Override
     public BlogArticleDetailVO getPublicArticleDetail(Long id, String clientIp) {
-        BlogArticleDetailVO detailVO = loadCachedOrDbDetail(id);
-        if (shouldRecordView(id, clientIp)) {
-            blogArticleMapper.incrementViewCount(id);
+        return getPublicArticleDetail(String.valueOf(id), clientIp, true);
+    }
+
+    @Override
+    public BlogArticleDetailVO getPublicArticleDetail(String idOrSlug, String clientIp, boolean trackView) {
+        Long targetId = resolvePublishedArticleId(idOrSlug);
+        BlogArticleDetailVO detailVO = loadCachedOrDbDetail(targetId);
+        if (trackView && shouldRecordView(targetId, clientIp)) {
+            blogArticleMapper.incrementViewCount(targetId);
             detailVO.setViewCount((detailVO.getViewCount() == null ? 0L : detailVO.getViewCount()) + 1L);
             cacheArticleDetail(detailVO);
             evictSiteInfoCache();
         }
         return detailVO;
+    }
+
+    private Long resolvePublishedArticleId(String idOrSlug) {
+        if (StrUtil.isBlank(idOrSlug)) {
+            throw new BusinessException("文章不存在或尚未发布");
+        }
+        String key = idOrSlug.trim();
+        if (key.matches("\\d+")) {
+            try {
+                return Long.parseLong(key);
+            } catch (NumberFormatException ignored) {
+                throw new BusinessException("文章不存在或尚未发布");
+            }
+        }
+        BlogArticle matched = blogArticleMapper.selectOne(new LambdaQueryWrapper<BlogArticle>()
+                .select(BlogArticle::getId)
+                .eq(BlogArticle::getSlug, key)
+                .eq(BlogArticle::getStatus, ArticleStatusEnum.PUBLISHED.getValue())
+                .last("LIMIT 1"));
+        if (matched == null) {
+            throw new BusinessException("文章不存在或尚未发布");
+        }
+        return matched.getId();
+    }
+
+    private void ensureSlugUnique(String slug, Long excludeId) {
+        if (StrUtil.isBlank(slug)) {
+            return;
+        }
+        if (slug.matches("\\d+")) {
+            throw new BusinessException("文章 URL 别名不能为纯数字");
+        }
+        LambdaQueryWrapper<BlogArticle> wrapper = new LambdaQueryWrapper<BlogArticle>()
+                .select(BlogArticle::getId)
+                .eq(BlogArticle::getSlug, slug)
+                .last("LIMIT 1");
+        if (excludeId != null) {
+            wrapper.ne(BlogArticle::getId, excludeId);
+        }
+        if (blogArticleMapper.selectOne(wrapper) != null) {
+            throw new BusinessException("文章 URL 别名已被占用，请更换后再试");
+        }
     }
 
     @Override
@@ -376,23 +428,23 @@ public class BlogArticleServiceImpl implements BlogArticleService {
 
         LocalDateTime cursorTime = entity.getPublishTime() != null ? entity.getPublishTime() : entity.getCreateTime();
         BlogArticle prev = blogArticleMapper.selectOne(new LambdaQueryWrapper<BlogArticle>()
-                .select(BlogArticle::getId, BlogArticle::getTitle)
+                .select(BlogArticle::getId, BlogArticle::getTitle, BlogArticle::getSlug)
                 .eq(BlogArticle::getStatus, ArticleStatusEnum.PUBLISHED.getValue())
                 .lt(BlogArticle::getPublishTime, cursorTime)
                 .orderByDesc(BlogArticle::getPublishTime, BlogArticle::getId)
                 .last("LIMIT 1"));
         if (prev != null) {
-            vo.setPrevArticle(new BlogArticleNeighborVO(prev.getId(), prev.getTitle()));
+            vo.setPrevArticle(new BlogArticleNeighborVO(prev.getId(), prev.getTitle(), prev.getSlug()));
         }
 
         BlogArticle next = blogArticleMapper.selectOne(new LambdaQueryWrapper<BlogArticle>()
-                .select(BlogArticle::getId, BlogArticle::getTitle)
+                .select(BlogArticle::getId, BlogArticle::getTitle, BlogArticle::getSlug)
                 .eq(BlogArticle::getStatus, ArticleStatusEnum.PUBLISHED.getValue())
                 .gt(BlogArticle::getPublishTime, cursorTime)
                 .orderByAsc(BlogArticle::getPublishTime, BlogArticle::getId)
                 .last("LIMIT 1"));
         if (next != null) {
-            vo.setNextArticle(new BlogArticleNeighborVO(next.getId(), next.getTitle()));
+            vo.setNextArticle(new BlogArticleNeighborVO(next.getId(), next.getTitle(), next.getSlug()));
         }
         return vo;
     }

@@ -88,6 +88,8 @@ public interface RedisConstants {
         String ARTICLE_LIKE_UV = "blog:article:like:uv:{}:{}";
         // 热门文章榜单缓存
         String HOT_ARTICLES = "blog:article:hot";
+        // 已发布学习路径导图列表缓存
+        String LEARNING_PATHS = "blog:learning:paths:v1";
     }
 
 }

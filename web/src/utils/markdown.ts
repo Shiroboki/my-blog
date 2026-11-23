@@ -74,6 +74,14 @@ function removeDuplicateLeadingHeading(markdown: string, articleTitle?: string):
   return source;
 }
 
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export function renderMarkdown(
   markdown: string,
   options?: RenderMarkdownOptions,
@@ -101,6 +109,14 @@ export function renderMarkdown(
         }
         return `<h${depth} id="${id}">${text}</h${depth}>`;
       },
+      link({ href, title, tokens }: Tokens.Link) {
+        const text = this.parser.parseInline(tokens);
+        const rawHref = href || "#";
+        const isExternal = /^https?:\/\//i.test(rawHref);
+        const titleAttr = title ? ` title="${escapeAttr(title)}"` : "";
+        const relAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : "";
+        return `<a href="${escapeAttr(rawHref)}"${titleAttr}${relAttr}>${text}</a>`;
+      },
     },
   });
 
@@ -108,7 +124,7 @@ export function renderMarkdown(
   return {
     html: DOMPurify.sanitize(raw, {
       ADD_TAGS: ["button"],
-      ADD_ATTR: ["type"],
+      ADD_ATTR: ["type", "target", "rel"],
     }),
     toc,
   };

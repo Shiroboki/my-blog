@@ -48,7 +48,7 @@
       />
       <div
         v-show="mode !== 'edit'"
-        class="md-preview h-full overflow-y-auto border-t border-gray-200 bg-white p-4 text-sm leading-7 text-gray-800 md:border-l md:border-t-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        class="md-preview blog-md-preview h-full overflow-y-auto border-t border-gray-200 bg-white p-4 text-sm leading-7 text-gray-800 md:border-l md:border-t-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
         v-html="renderedHtml"
       />
     </div>
@@ -58,7 +58,6 @@
 <script setup lang="ts">
 import DOMPurify from "dompurify";
 import hljs from "highlight.js";
-import "highlight.js/styles/github-dark.css";
 import { Marked, type Tokens } from "marked";
 import FileAPI from "@/api/file";
 
@@ -67,7 +66,7 @@ interface Props {
   placeholder?: string;
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   height: "460px",
   placeholder: "请输入 Markdown 正文，支持拖拽/粘贴图片自动上传...",
 });
@@ -83,9 +82,10 @@ const markedInstance = new Marked({
   breaks: true,
   renderer: {
     code({ text, lang }: Tokens.Code) {
-      const language = lang && hljs.getLanguage(lang) ? lang : "plaintext";
+      const cleanLang = (lang || "").trim().toLowerCase().replace(/[^a-z0-9_+-]/g, "");
+      const language = cleanLang && hljs.getLanguage(cleanLang) ? cleanLang : "plaintext";
       const highlighted = hljs.highlight(text, { language }).value;
-      return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+      return `<div class="code-block"><div class="code-header"><span class="code-lang">${language}</span></div><pre><code class="hljs language-${language}">${highlighted}</code></pre></div>`;
     },
   },
 });
@@ -153,61 +153,158 @@ async function handlePaste(event: ClipboardEvent) {
 }
 </script>
 
-<style scoped lang="scss">
-.md-preview {
-  :deep(h1),
-  :deep(h2),
-  :deep(h3) {
-    margin: 16px 0 8px;
-    font-weight: 600;
-  }
+<style lang="scss">
+.blog-md-preview {
+  --md-code-bg: #f6f8fa;
+  --md-code-border: rgb(15 23 42 / 10%);
+  --md-code-divider: rgb(15 23 42 / 8%);
+  --md-code-lang: #64748b;
+  --md-hljs-fg: #24292e;
+  --md-hljs-keyword: #d73a49;
+  --md-hljs-entity: #6f42c1;
+  --md-hljs-constant: #005cc5;
+  --md-hljs-string: #032f62;
+  --md-hljs-variable: #e36209;
+  --md-hljs-comment: #6a737d;
+  --md-hljs-tag: #22863a;
+}
 
-  :deep(h1) {
-    font-size: 1.5rem;
-  }
+html.dark .blog-md-preview {
+  --md-code-bg: #0d111a;
+  --md-code-border: rgb(255 255 255 / 10%);
+  --md-code-divider: rgb(255 255 255 / 8%);
+  --md-code-lang: #8b9bb4;
+  --md-hljs-fg: #c9d1d9;
+  --md-hljs-keyword: #ff7b72;
+  --md-hljs-entity: #d2a8ff;
+  --md-hljs-constant: #79c0ff;
+  --md-hljs-string: #a5d6ff;
+  --md-hljs-variable: #ffa657;
+  --md-hljs-comment: #8b949e;
+  --md-hljs-tag: #7ee787;
+}
 
-  :deep(h2) {
-    font-size: 1.25rem;
-    border-bottom: 1px solid var(--el-border-color-lighter);
-    padding-bottom: 4px;
-  }
+.blog-md-preview h1,
+.blog-md-preview h2,
+.blog-md-preview h3 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
 
-  :deep(p) {
-    margin: 8px 0;
-  }
+.blog-md-preview h1 {
+  font-size: 1.5rem;
+}
 
-  :deep(pre) {
-    margin: 12px 0;
-    padding: 12px;
-    border-radius: 6px;
-    overflow-x: auto;
-    background: #0d1117;
-  }
+.blog-md-preview h2 {
+  padding-bottom: 4px;
+  font-size: 1.25rem;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
 
-  :deep(code:not(.hljs)) {
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: var(--el-fill-color-light);
-    font-size: 0.9em;
-  }
+.blog-md-preview p {
+  margin: 8px 0;
+}
 
-  :deep(blockquote) {
-    margin: 10px 0;
-    padding: 6px 12px;
-    border-left: 4px solid var(--el-color-primary);
-    background: var(--el-fill-color-lighter);
-  }
+.blog-md-preview .code-block {
+  margin: 12px 0;
+  overflow: hidden;
+  background: var(--md-code-bg);
+  border: 1px solid var(--md-code-border);
+  border-radius: 10px;
+}
 
-  :deep(ul),
-  :deep(ol) {
-    padding-left: 20px;
-    margin: 8px 0;
-  }
+.blog-md-preview .code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: var(--md-code-lang);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--md-code-divider);
+}
 
-  :deep(img) {
-    max-width: 100%;
-    border-radius: 6px;
-    margin: 8px 0;
-  }
+.blog-md-preview pre {
+  padding: 12px 14px;
+  margin: 0;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--md-hljs-fg);
+  background: transparent;
+}
+
+.blog-md-preview code.hljs {
+  color: var(--md-hljs-fg);
+  background: transparent;
+}
+
+.blog-md-preview .hljs-comment,
+.blog-md-preview .hljs-quote {
+  color: var(--md-hljs-comment);
+}
+
+.blog-md-preview .hljs-keyword,
+.blog-md-preview .hljs-selector-tag,
+.blog-md-preview .hljs-type,
+.blog-md-preview .hljs-doctag {
+  color: var(--md-hljs-keyword);
+}
+
+.blog-md-preview .hljs-title,
+.blog-md-preview .hljs-title\.class_,
+.blog-md-preview .hljs-title\.function_ {
+  color: var(--md-hljs-entity);
+}
+
+.blog-md-preview .hljs-attr,
+.blog-md-preview .hljs-attribute,
+.blog-md-preview .hljs-number,
+.blog-md-preview .hljs-literal,
+.blog-md-preview .hljs-meta {
+  color: var(--md-hljs-constant);
+}
+
+.blog-md-preview .hljs-string,
+.blog-md-preview .hljs-regexp {
+  color: var(--md-hljs-string);
+}
+
+.blog-md-preview .hljs-built_in,
+.blog-md-preview .hljs-variable,
+.blog-md-preview .hljs-symbol {
+  color: var(--md-hljs-variable);
+}
+
+.blog-md-preview .hljs-name,
+.blog-md-preview .hljs-selector-class {
+  color: var(--md-hljs-tag);
+}
+
+.blog-md-preview code:not(.hljs) {
+  padding: 2px 6px;
+  font-size: 0.9em;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.blog-md-preview blockquote {
+  padding: 6px 12px;
+  margin: 10px 0;
+  background: var(--el-fill-color-lighter);
+  border-left: 4px solid var(--el-color-primary);
+}
+
+.blog-md-preview ul,
+.blog-md-preview ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.blog-md-preview img {
+  max-width: 100%;
+  margin: 8px 0;
+  border-radius: 6px;
 }
 </style>

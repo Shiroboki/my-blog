@@ -90,7 +90,7 @@ const avatarStyle = computed(() => {
 <style scoped>
 .comment-item {
   padding: 14px 0;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .comment-item:last-child {
@@ -101,7 +101,7 @@ const avatarStyle = computed(() => {
   margin-top: 10px;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-subtle);
   background: var(--bg-subtle);
 }
 
@@ -229,5 +229,13 @@ html.dark .admin-badge {
 .comment-children {
   margin-top: 8px;
   padding-left: 12px;
+}
+
+@supports (corner-shape: squircle) {
+  .comment-item--child,
+  .comment-avatar,
+  .comment-quote {
+    corner-shape: squircle;
+  }
 }
 </style>

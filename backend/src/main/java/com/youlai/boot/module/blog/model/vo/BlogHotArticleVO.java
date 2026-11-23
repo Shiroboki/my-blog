@@ -18,6 +18,9 @@ public class BlogHotArticleVO {
     @Schema(description = "文章标题")
     private String title;
 
+    @Schema(description = "文章别名")
+    private String slug;
+
     @Schema(description = "浏览量")
     private Long viewCount;
 

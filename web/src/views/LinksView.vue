@@ -43,7 +43,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { blogApi, type BlogLinkItem } from "@/api/blog";
+import { useSiteInfo } from "@/composables/useSiteInfo";
 
+const { loadSiteInfo } = useSiteInfo();
 const links = ref<BlogLinkItem[]>([]);
 const loading = ref(false);
 
@@ -72,6 +74,7 @@ function extractHost(url: string) {
 }
 
 onMounted(async () => {
+  void loadSiteInfo();
   loading.value = true;
   try {
     links.value = await blogApi.getLinks();

@@ -13,6 +13,7 @@ import com.youlai.boot.module.blog.model.vo.BlogArticleDetailVO;
 import com.youlai.boot.module.blog.model.vo.BlogArticlePageVO;
 import com.youlai.boot.module.blog.model.vo.BlogCategoryVO;
 import com.youlai.boot.module.blog.model.vo.BlogCommentVO;
+import com.youlai.boot.module.blog.model.vo.BlogLearningPathVO;
 import com.youlai.boot.module.blog.model.vo.BlogLinkVO;
 import com.youlai.boot.module.blog.model.vo.BlogSiteInfoVO;
 import com.youlai.boot.module.blog.model.vo.BlogTagVO;
@@ -21,6 +22,7 @@ import com.youlai.boot.module.blog.service.BlogCategoryService;
 import com.youlai.boot.module.blog.service.BlogCommentService;
 import com.youlai.boot.module.blog.service.BlogConfigService;
 import com.youlai.boot.module.blog.service.BlogDashboardService;
+import com.youlai.boot.module.blog.service.BlogLearningPathService;
 import com.youlai.boot.module.blog.service.BlogLinkService;
 import com.youlai.boot.module.blog.service.BlogTagService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -50,6 +52,7 @@ public class BlogPublicController {
     private final BlogTagService blogTagService;
     private final BlogCommentService blogCommentService;
     private final BlogLinkService blogLinkService;
+    private final BlogLearningPathService blogLearningPathService;
     private final BlogDashboardService blogDashboardService;
 
     @Operation(summary = "获取博客站点信息与统计")
@@ -65,13 +68,14 @@ public class BlogPublicController {
         return PageResult.success(page);
     }
 
-    @Operation(summary = "获取公开文章详情")
-    @GetMapping("/articles/{id}")
+    @Operation(summary = "获取公开文章详情（支持 ID 或 Slug，trackView=false 时仅预取不计阅读量）")
+    @GetMapping("/articles/{idOrSlug}")
     public Result<BlogArticleDetailVO> getPublicArticleDetail(
-            @Parameter(description = "文章ID") @PathVariable Long id,
+            @Parameter(description = "文章ID或URL别名") @PathVariable String idOrSlug,
+            @Parameter(description = "是否计入阅读量") @RequestParam(defaultValue = "true") boolean trackView,
             HttpServletRequest request
     ) {
-        return Result.success(blogArticleService.getPublicArticleDetail(id, IPUtils.getIpAddr(request)));
+        return Result.success(blogArticleService.getPublicArticleDetail(idOrSlug, IPUtils.getIpAddr(request), trackView));
     }
 
     @Operation(summary = "文章点赞")
@@ -123,6 +127,20 @@ public class BlogPublicController {
     @GetMapping("/links")
     public Result<List<BlogLinkVO>> listPublicLinks() {
         return Result.success(blogLinkService.listPublicLinks());
+    }
+
+    @Operation(summary = "获取已发布学习路径与思维导图列表")
+    @GetMapping("/learning-paths")
+    public Result<List<BlogLearningPathVO>> listPublicLearningPaths() {
+        return Result.success(blogLearningPathService.listPublicPaths());
+    }
+
+    @Operation(summary = "获取单个学习路径导图（支持ID或Slug）")
+    @GetMapping("/learning-paths/{idOrSlug}")
+    public Result<BlogLearningPathVO> getPublicLearningPath(
+            @Parameter(description = "路径ID或URL别名") @PathVariable String idOrSlug
+    ) {
+        return Result.success(blogLearningPathService.getPublicPath(idOrSlug));
     }
 
     @Operation(summary = "RSS 2.0 订阅源")

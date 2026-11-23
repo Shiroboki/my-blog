@@ -33,6 +33,8 @@ public interface BlogArticleService {
 
     BlogArticleDetailVO getPublicArticleDetail(Long id, String clientIp);
 
+    BlogArticleDetailVO getPublicArticleDetail(String idOrSlug, String clientIp, boolean trackView);
+
     Long likeArticle(Long id, String clientIp);
 
     List<BlogArchiveVO> listArchives();

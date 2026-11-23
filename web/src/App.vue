@@ -1,5 +1,13 @@
 <template>
   <div class="app-shell">
+    <!-- 文章详情页顶部极细线性阅读进度条 -->
+    <div v-if="isArticleRoute" class="reading-progress-rail" aria-hidden="true">
+      <div
+        class="reading-progress-fill"
+        :style="{ transform: `scaleX(${scrollProgress})` }"
+      />
+    </div>
+
     <!-- 背景氛围光斑层：让磨砂透明卡片具备真实色彩透射质感 -->
     <div class="aurora-backdrop" aria-hidden="true">
       <span class="orb orb-1" />
@@ -52,6 +60,7 @@
           <nav class="nav-links">
             <RouterLink to="/" class="nav-pill" active-class="active">首页</RouterLink>
             <RouterLink to="/archives" class="nav-pill" active-class="active">归档</RouterLink>
+            <RouterLink to="/paths" class="nav-pill" active-class="active">学习路径</RouterLink>
             <RouterLink to="/links" class="nav-pill" active-class="active">友链</RouterLink>
             <RouterLink to="/about" class="nav-pill" active-class="active">关于</RouterLink>
             <a href="/admin/" class="nav-pill nav-pill--admin">后台管理</a>
@@ -113,13 +122,16 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import ArticleMorphLayer from "@/components/ArticleMorphLayer.vue";
 import LampPullSwitch from "@/components/LampPullSwitch.vue";
 import { useNavbarArticle } from "@/composables/useNavbarArticle";
 import { useSiteInfo } from "@/composables/useSiteInfo";
 
+const route = useRoute();
 const { siteInfo, loadSiteInfo } = useSiteInfo();
 const { navbarArticle } = useNavbarArticle();
+const isArticleRoute = computed(() => route.name === "ArticleDetail");
 const isDark = ref(localStorage.getItem("myblog_theme") === "dark");
 const scrollProgress = ref(0);
 const isScrolled = ref(false);
@@ -198,6 +210,25 @@ onUnmounted(() => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+.reading-progress-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  z-index: 75;
+  pointer-events: none;
+  background: transparent;
+}
+
+.reading-progress-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: transform 0.08s linear;
 }
 
 .aurora-backdrop {

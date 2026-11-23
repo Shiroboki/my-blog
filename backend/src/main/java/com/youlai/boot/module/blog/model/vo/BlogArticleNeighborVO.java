@@ -19,4 +19,12 @@ public class BlogArticleNeighborVO {
 
     @Schema(description = "文章标题")
     private String title;
+
+    @Schema(description = "文章别名")
+    private String slug;
+
+    public BlogArticleNeighborVO(Long id, String title) {
+        this.id = id;
+        this.title = title;
+    }
 }

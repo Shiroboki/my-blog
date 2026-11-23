@@ -87,6 +87,7 @@
         SELECT
             id,
             title,
+            slug,
             view_count,
             publish_time
         FROM blog_article
@@ -100,6 +101,7 @@
         SELECT
             a.id,
             a.title,
+            a.slug,
             c.name AS category_name,
             COALESCE(a.publish_time, a.create_time) AS publish_time
         FROM blog_article a

@@ -12,6 +12,9 @@ import type {
   BlogCommentReplyForm,
   BlogConfigForm,
   BlogDashboardStats,
+  BlogLearningPathForm,
+  BlogLearningPathItem,
+  BlogLearningPathQuery,
   BlogLinkForm,
   BlogLinkItem,
   BlogLinkQuery,
@@ -260,6 +263,46 @@ export const BlogDashboardAPI = {
     return request<unknown, BlogDashboardStats>({
       url: `${BLOG_BASE}/dashboard`,
       method: "get",
+    });
+  },
+};
+
+export const BlogLearningPathAPI = {
+  getPage(queryParams: BlogLearningPathQuery) {
+    return request<unknown, PageResult<BlogLearningPathItem>>({
+      url: `${BLOG_BASE}/learning-paths`,
+      method: "get",
+      params: queryParams,
+    });
+  },
+
+  getForm(id: string) {
+    return request<unknown, BlogLearningPathForm>({
+      url: `${BLOG_BASE}/learning-paths/${id}/form`,
+      method: "get",
+    });
+  },
+
+  create(data: BlogLearningPathForm) {
+    return request<unknown, string>({
+      url: `${BLOG_BASE}/learning-paths`,
+      method: "post",
+      data,
+    });
+  },
+
+  update(id: string, data: BlogLearningPathForm) {
+    return request({
+      url: `${BLOG_BASE}/learning-paths/${id}`,
+      method: "put",
+      data,
+    });
+  },
+
+  deleteByIds(ids: string) {
+    return request({
+      url: `${BLOG_BASE}/learning-paths/${ids}`,
+      method: "delete",
     });
   },
 };

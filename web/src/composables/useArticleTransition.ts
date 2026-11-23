@@ -19,6 +19,7 @@ export interface RectBox {
 
 export interface ArticlePreviewSeed {
   id: string;
+  slug?: string;
   title: string;
   summary?: string;
   coverImage?: string;
@@ -243,20 +244,25 @@ export function peekFreshHomeSnapshot(queryKey: string): HomeFeedSnapshot | null
 }
 
 export function cacheArticleDetail(detail: BlogArticleDetail) {
-  articleDetailCache.set(detail.id, { ...detail });
+  const copy = { ...detail };
+  articleDetailCache.set(String(detail.id), copy);
+  const cleanSlug = detail.slug?.trim();
+  if (cleanSlug) {
+    articleDetailCache.set(cleanSlug, copy);
+  }
 }
 
-export function getCachedArticleDetail(id: string): BlogArticleDetail | null {
-  return articleDetailCache.get(id) ?? null;
+export function getCachedArticleDetail(idOrSlug: string): BlogArticleDetail | null {
+  return articleDetailCache.get(idOrSlug) ?? null;
 }
 
 export function prefetchArticleDetail(
-  id: string,
+  idOrSlug: string,
   fetcher: () => Promise<BlogArticleDetail>,
 ): Promise<BlogArticleDetail> {
-  const cached = articleDetailCache.get(id);
+  const cached = articleDetailCache.get(idOrSlug);
   if (cached) return Promise.resolve(cached);
-  const inflight = articleInflightCache.get(id);
+  const inflight = articleInflightCache.get(idOrSlug);
   if (inflight) return inflight;
 
   const task = fetcher()
@@ -265,9 +271,9 @@ export function prefetchArticleDetail(
       return detail;
     })
     .finally(() => {
-      articleInflightCache.delete(id);
+      articleInflightCache.delete(idOrSlug);
     });
-  articleInflightCache.set(id, task);
+  articleInflightCache.set(idOrSlug, task);
   return task;
 }
 
@@ -329,14 +335,23 @@ export function prepareEnterMorph(
   };
 }
 
-export function peekPendingEnter(articleId: string): PendingEnterState | null {
-  if (!pendingEnter.value || pendingEnter.value.articleId !== articleId) return null;
+function matchesArticleRouteKey(
+  state: { articleId: string; preview: ArticlePreviewSeed },
+  routeKey: string,
+): boolean {
+  if (state.articleId === routeKey) return true;
+  const slug = state.preview.slug?.trim();
+  return Boolean(slug && slug === routeKey);
+}
+
+export function peekPendingEnter(routeKey: string): PendingEnterState | null {
+  if (!pendingEnter.value || !matchesArticleRouteKey(pendingEnter.value, routeKey)) return null;
   return pendingEnter.value;
 }
 
-export function launchEnterMorph(articleId: string, toEl: HTMLElement): boolean {
+export function launchEnterMorph(routeKey: string, toEl: HTMLElement): boolean {
   const pending = pendingEnter.value;
-  if (!pending || pending.articleId !== articleId || prefersReducedMotion()) {
+  if (!pending || !matchesArticleRouteKey(pending, routeKey) || prefersReducedMotion()) {
     pendingEnter.value = null;
     hiddenDetailSheet.value = false;
     return false;
@@ -356,7 +371,7 @@ export function launchEnterMorph(articleId: string, toEl: HTMLElement): boolean 
   activeMorph.value = {
     key: ++morphSeq,
     phase: "enter",
-    articleId,
+    articleId: pending.articleId,
     preview: pending.preview,
     from: pending.from,
     to: toBox,

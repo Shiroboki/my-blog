@@ -2,13 +2,17 @@
   <div class="detail-page">
     <div v-if="loading" class="card state-card state-card--centered animate-rise">文章加载中...</div>
     <div v-else-if="errorMsg" class="card state-card state-card--centered animate-rise">
+      <span class="error-state-badge">404</span>
       <p class="error-state-text">{{ errorMsg }}</p>
-      <button type="button" class="btn btn-primary" @click="goBack">
-        {{ hasBackHistory ? "返回上一页" : "返回首页" }}
-      </button>
+      <div class="error-state-actions">
+        <button type="button" class="btn btn-primary" @click="goBack">
+          {{ hasBackHistory ? "返回上一页" : "返回首页" }}
+        </button>
+        <RouterLink to="/archives" class="btn">浏览文章归档</RouterLink>
+      </div>
     </div>
 
-    <div v-else-if="article" class="detail-grid">
+    <div v-else-if="article" :key="article.id" class="detail-grid">
       <!-- 左侧宽敞阅读主内容区与讨论区 -->
       <main class="article-main">
         <article
@@ -102,6 +106,7 @@
               :src="article.coverImage"
               :alt="article.title"
               class="sheet-cover"
+              @click="openLightbox(article.coverImage, article.title)"
             />
           </header>
 
@@ -198,7 +203,7 @@
           <nav v-if="article.prevArticle || article.nextArticle" class="neighbor-nav">
             <RouterLink
               v-if="article.prevArticle"
-              :to="`/article/${article.prevArticle.id}`"
+              :to="getArticleRoute(article.prevArticle)"
               class="neighbor-card"
             >
               <span class="neighbor-label">上一篇</span>
@@ -207,7 +212,7 @@
             <div v-else />
             <RouterLink
               v-if="article.nextArticle"
-              :to="`/article/${article.nextArticle.id}`"
+              :to="getArticleRoute(article.nextArticle)"
               class="neighbor-card neighbor-card--right"
             >
               <span class="neighbor-label">下一篇</span>
@@ -569,13 +574,49 @@
         </div>
       </Transition>
     </div>
+
+    <!-- 正文与封面图片灯箱放大预览 -->
+    <Teleport to="body">
+      <Transition name="route-fade">
+        <div
+          v-if="lightboxImage"
+          class="lightbox-mask"
+          role="dialog"
+          aria-modal="true"
+          aria-label="图片放大预览"
+          @click.self="closeLightbox"
+        >
+          <button
+            type="button"
+            class="lightbox-close-btn"
+            aria-label="关闭图片预览"
+            @click="closeLightbox"
+          >
+            关闭（Esc）
+          </button>
+          <div class="lightbox-stage" @click.self="closeLightbox">
+            <img
+              :src="lightboxImage.src"
+              :alt="lightboxImage.alt"
+              class="lightbox-img"
+              :class="{ 'is-zoomed': lightboxImage.zoomed }"
+              @click="lightboxImage.zoomed = !lightboxImage.zoomed"
+            />
+          </div>
+          <p class="lightbox-caption">
+            <span v-if="lightboxImage.alt">{{ lightboxImage.alt }} · </span>
+            点击图片可{{ lightboxImage.zoomed ? "还原适应窗口" : "放大细节" }}
+          </p>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
-import { blogApi, type BlogArticleDetail, type BlogComment } from "@/api/blog";
+import { blogApi, getArticleRoute, type BlogArticleDetail, type BlogComment } from "@/api/blog";
 import CommentItem from "@/components/CommentItem.vue";
 import GiscusComments from "@/components/GiscusComments.vue";
 import {
@@ -583,7 +624,6 @@ import {
   getCachedArticleDetail,
   launchEnterMorph,
   peekPendingEnter,
-  prefetchArticleDetail,
   prepareLeaveMorph,
   updateActiveEnterSheetSnapshot,
   useArticleTransition,
@@ -707,8 +747,29 @@ const activeViewerComments = computed(() =>
   comments.value.filter((item) => activeViewerIds.value.includes(item.id)),
 );
 
+const lightboxImage = ref<{ src: string; alt: string; zoomed: boolean } | null>(null);
 let selectionTimer: number | null = null;
 let flashTimer: number | null = null;
+let activeLoadToken = 0;
+
+function openLightbox(src: string, alt = "") {
+  if (!src) return;
+  lightboxImage.value = { src, alt, zoomed: false };
+}
+
+function closeLightbox() {
+  lightboxImage.value = null;
+}
+
+function applyArticleSeo(target: BlogArticleDetail) {
+  updatePageSeo({
+    title: target.title,
+    description: target.summary || target.content.slice(0, 140) || target.title,
+    image: target.coverImage,
+    path: getArticleRoute(target),
+    type: "article",
+  });
+}
 
 const rendered = computed(() =>
   renderMarkdown(article.value?.content || "", {
@@ -784,7 +845,8 @@ function scrollToComments() {
   document.getElementById("article-comments")?.scrollIntoView({ behavior: "smooth" });
 }
 
-async function loadArticle(id: string) {
+async function loadArticle(routeKey: string) {
+  const token = ++activeLoadToken;
   errorMsg.value = "";
   likeHint.value = "";
   commentNotice.value = "";
@@ -793,11 +855,12 @@ async function loadArticle(id: string) {
   selectionMenu.value = null;
   viewerOpen.value = false;
   inlineComposerOpen.value = false;
+  lightboxImage.value = null;
   titleAbsorbed.value = false;
   setNavbarArticle(null);
 
-  const pendingMorph = peekPendingEnter(id);
-  const cachedDetail = getCachedArticleDetail(id);
+  const pendingMorph = peekPendingEnter(routeKey);
+  const cachedDetail = getCachedArticleDetail(routeKey);
   const hadCachedContent = Boolean(cachedDetail?.content);
 
   if (pendingMorph) {
@@ -810,6 +873,7 @@ async function loadArticle(id: string) {
       ? { ...cachedDetail }
       : {
           id: pendingMorph.preview.id,
+          slug: pendingMorph.preview.slug,
           title: pendingMorph.preview.title,
           summary: pendingMorph.preview.summary,
           coverImage: pendingMorph.preview.coverImage,
@@ -828,10 +892,12 @@ async function loadArticle(id: string) {
           allowComment: 1,
         };
     article.value = seed;
-    updatePageSeo(seed.title, seed.summary || seed.title);
+    comments.value = [];
+    applyArticleSeo(seed);
     await nextTick();
+    if (token !== activeLoadToken) return;
     if (articleSheetRef.value) {
-      launchEnterMorph(id, articleSheetRef.value);
+      launchEnterMorph(routeKey, articleSheetRef.value);
     } else {
       hiddenDetailSheet.value = false;
     }
@@ -840,24 +906,40 @@ async function loadArticle(id: string) {
     loading.value = false;
     contentLoading.value = false;
     article.value = { ...cachedDetail };
-    updatePageSeo(cachedDetail.title, cachedDetail.summary || cachedDetail.content.slice(0, 140));
+    comments.value = [];
+    applyArticleSeo(cachedDetail);
   } else {
     seededFromMorph.value = false;
     loading.value = true;
     contentLoading.value = false;
+    article.value = null;
+    comments.value = [];
   }
 
   try {
-    const [detail, commentList] = await Promise.all([
-      prefetchArticleDetail(id, () => blogApi.getArticleDetail(id)),
-      blogApi.getComments(id),
-    ]);
+    const isNumericId = /^\d+$/.test(routeKey);
+    let detail: BlogArticleDetail;
+    let commentList: BlogComment[];
+
+    if (isNumericId) {
+      [detail, commentList] = await Promise.all([
+        blogApi.getArticleDetail(routeKey, { trackView: true }),
+        blogApi.getComments(routeKey),
+      ]);
+    } else {
+      detail = await blogApi.getArticleDetail(routeKey, { trackView: true });
+      if (token !== activeLoadToken) return;
+      commentList = await blogApi.getComments(detail.id);
+    }
+
+    if (token !== activeLoadToken) return;
     article.value = detail;
     cacheArticleDetail(detail);
     comments.value = commentList;
     contentLoading.value = false;
-    updatePageSeo(detail.title, detail.summary || detail.content.slice(0, 140));
+    applyArticleSeo(detail);
     await nextTick();
+    if (token !== activeLoadToken) return;
     if (!hadCachedContent && articleSheetRef.value) {
       updateActiveEnterSheetSnapshot(articleSheetRef.value);
     }
@@ -865,12 +947,15 @@ async function loadArticle(id: string) {
     updateActiveHeading();
     updateTitleAbsorption();
   } catch (err) {
+    if (token !== activeLoadToken) return;
     if (!article.value) {
-      errorMsg.value = err instanceof Error ? err.message : "文章加载失败";
+      errorMsg.value = err instanceof Error ? err.message : "文章不存在或尚未发布";
     }
     contentLoading.value = false;
   } finally {
-    loading.value = false;
+    if (token === activeLoadToken) {
+      loading.value = false;
+    }
   }
 }
 
@@ -1057,6 +1142,12 @@ async function handleMarkdownClick(e: MouseEvent) {
     return;
   }
 
+  const img = (e.target as HTMLElement | null)?.closest("img") as HTMLImageElement | null;
+  if (img && img.src) {
+    openLightbox(img.src, img.alt || article.value?.title || "");
+    return;
+  }
+
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
     return;
@@ -1199,6 +1290,25 @@ function handleDocumentMouseDown(e: MouseEvent) {
   selectionMenu.value = null;
 }
 
+function handleDocumentKeydown(e: KeyboardEvent) {
+  if (e.key !== "Escape") return;
+  if (lightboxImage.value) {
+    closeLightbox();
+    return;
+  }
+  if (inlineComposerOpen.value) {
+    closeInlineComposer();
+    return;
+  }
+  if (viewerOpen.value) {
+    closeAnnotationViewer();
+    return;
+  }
+  if (mobileTocOpen.value) {
+    mobileTocOpen.value = false;
+  }
+}
+
 function scrollToHeading(id: string) {
   mobileTocOpen.value = false;
   activeHeadingId.value = id;
@@ -1230,15 +1340,21 @@ onBeforeRouteLeave((to) => {
 });
 
 onMounted(() => {
-  loadSiteInfo();
+  void loadSiteInfo().then(() => {
+    if (article.value) {
+      applyArticleSeo(article.value);
+    }
+  });
   window.addEventListener("scroll", handleWindowScroll, { passive: true });
   document.addEventListener("mousedown", handleDocumentMouseDown);
+  window.addEventListener("keydown", handleDocumentKeydown);
 });
 
 onUnmounted(() => {
   setNavbarArticle(null);
   window.removeEventListener("scroll", handleWindowScroll);
   document.removeEventListener("mousedown", handleDocumentMouseDown);
+  window.removeEventListener("keydown", handleDocumentKeydown);
   if (selectionTimer !== null) {
     window.clearTimeout(selectionTimer);
   }
@@ -1265,10 +1381,37 @@ onUnmounted(() => {
 .state-card--centered {
   max-width: 720px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.error-state-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
 }
 
 .error-state-text {
-  margin: 0 0 16px;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.error-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
 }
 
 /* 宽敞两栏阅读布局：左 920px+ 主内容/讨论区 + 右 252px 固定悬浮互动与大纲 */
@@ -1488,6 +1631,16 @@ onUnmounted(() => {
   object-fit: cover;
   border-radius: 16px;
   margin-top: 20px;
+  cursor: zoom-in;
+  transition: transform 0.25s ease;
+}
+
+.sheet-cover:hover {
+  transform: scale(1.006);
+}
+
+.markdown-body :deep(img) {
+  cursor: zoom-in;
 }
 
 .sheet-divider {
@@ -2168,6 +2321,10 @@ html.dark .mono-circle-btn.is-active {
 }
 
 @supports (corner-shape: squircle) {
+  .sheet-cover,
+  .mobile-toc-drawer,
+  .annotation-modal,
+  .annotation-thread,
   .neighbor-card,
   .comment-closed,
   .no-comments,
@@ -2179,8 +2336,76 @@ html.dark .mono-circle-btn.is-active {
     corner-shape: squircle;
   }
 
-  .selection-action-btn {
+  .selection-action-btn,
+  .lightbox-close-btn {
     corner-shape: round;
   }
+}
+
+.lightbox-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: rgba(9, 13, 20, 0.84);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px 20px;
+  gap: 14px;
+}
+
+.lightbox-close-btn {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 112;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(17, 24, 39, 0.72);
+  color: #f8fafc;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.lightbox-close-btn:hover {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.lightbox-stage {
+  max-width: 92vw;
+  max-height: calc(100vh - 110px);
+  overflow: auto;
+  display: flex;
+  padding: 8px;
+}
+
+.lightbox-img {
+  margin: auto;
+  max-width: 88vw;
+  max-height: calc(100vh - 130px);
+  border-radius: 12px;
+  object-fit: contain;
+  cursor: zoom-in;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  transition: max-width 0.22s ease, max-height 0.22s ease;
+}
+
+.lightbox-img.is-zoomed {
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
+}
+
+.lightbox-caption {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(226, 232, 240, 0.82);
+  text-align: center;
 }
 </style>

@@ -147,6 +147,28 @@ CREATE TABLE `blog_link` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='博客友情链接表';
 
 -- ----------------------------
+-- 表结构：blog_learning_path（学习路径与思维导图表）
+-- ----------------------------
+DROP TABLE IF EXISTS `blog_learning_path`;
+CREATE TABLE `blog_learning_path` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `title` varchar(128) NOT NULL COMMENT '路径标题',
+  `slug` varchar(128) DEFAULT NULL COMMENT 'URL别名',
+  `summary` varchar(500) DEFAULT NULL COMMENT '路径简介',
+  `cover_color` varchar(64) DEFAULT '#0d9488' COMMENT '主题强调色',
+  `tree_json` longtext NOT NULL COMMENT '思维导图节点树JSON',
+  `sort` int NOT NULL DEFAULT 0 COMMENT '排序（升序）',
+  `status` tinyint NOT NULL DEFAULT 1 COMMENT '状态(0草稿 1已发布)',
+  `create_time` datetime NOT NULL COMMENT '创建时间',
+  `update_time` datetime NOT NULL COMMENT '更新时间',
+  `create_by` bigint DEFAULT NULL COMMENT '创建人ID',
+  `update_by` bigint DEFAULT NULL COMMENT '更新人ID',
+  `is_deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除(0未删 1已删)',
+  PRIMARY KEY (`id`),
+  KEY `idx_blog_learning_path_status_sort` (`status`, `sort`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='博客学习路径与思维导图表';
+
+-- ----------------------------
 -- 菜单权限（扩展模块号段：93）
 -- ----------------------------
 INSERT IGNORE INTO `sys_menu` (`id`, `parent_id`, `tree_path`, `name`, `type`, `route_name`, `route_path`, `component`, `perm`, `keep_alive`, `visible`, `sort`, `icon`, `redirect`, `create_time`, `update_time`, `params`) VALUES
@@ -180,7 +202,12 @@ INSERT IGNORE INTO `sys_menu` (`id`, `parent_id`, `tree_path`, `name`, `type`, `
 (930601, 9306, '0,93,9306', '友链查询', 'B', NULL, '', NULL, 'blog:link:list', NULL, 1, 1, '', NULL, now(), now(), NULL),
 (930602, 9306, '0,93,9306', '友链新增', 'B', NULL, '', NULL, 'blog:link:create', NULL, 1, 2, '', NULL, now(), now(), NULL),
 (930603, 9306, '0,93,9306', '友链修改', 'B', NULL, '', NULL, 'blog:link:update', NULL, 1, 3, '', NULL, now(), now(), NULL),
-(930604, 9306, '0,93,9306', '友链删除', 'B', NULL, '', NULL, 'blog:link:delete', NULL, 1, 4, '', NULL, now(), now(), NULL);
+(930604, 9306, '0,93,9306', '友链删除', 'B', NULL, '', NULL, 'blog:link:delete', NULL, 1, 4, '', NULL, now(), now(), NULL),
+(9308, 93, '0,93', '学习路径', 'M', 'BlogLearningPath', 'learning-path', 'blog/learning-path/index', NULL, 1, 1, 7, 'el-icon-Share', NULL, now(), now(), NULL),
+(930801, 9308, '0,93,9308', '路径查询', 'B', NULL, '', NULL, 'blog:learning-path:list', NULL, 1, 1, '', NULL, now(), now(), NULL),
+(930802, 9308, '0,93,9308', '路径新增', 'B', NULL, '', NULL, 'blog:learning-path:create', NULL, 1, 2, '', NULL, now(), now(), NULL),
+(930803, 9308, '0,93,9308', '路径修改', 'B', NULL, '', NULL, 'blog:learning-path:update', NULL, 1, 3, '', NULL, now(), now(), NULL),
+(930804, 9308, '0,93,9308', '路径删除', 'B', NULL, '', NULL, 'blog:learning-path:delete', NULL, 1, 4, '', NULL, now(), now(), NULL);
 
 -- 授权给系统管理员角色（role_id=2）
 INSERT IGNORE INTO `sys_role_menu` VALUES
@@ -191,7 +218,8 @@ INSERT IGNORE INTO `sys_role_menu` VALUES
 (2, 9303), (2, 930301), (2, 930302), (2, 930303), (2, 930304),
 (2, 9304), (2, 930401), (2, 930402), (2, 930403), (2, 930404),
 (2, 9305), (2, 930501), (2, 930502),
-(2, 9306), (2, 930601), (2, 930602), (2, 930603), (2, 930604);
+(2, 9306), (2, 930601), (2, 930602), (2, 930603), (2, 930604),
+(2, 9308), (2, 930801), (2, 930802), (2, 930803), (2, 930804);
 
 -- ----------------------------
 -- 初始站点配置
@@ -241,4 +269,7 @@ INSERT IGNORE INTO `blog_comment` (`id`, `article_id`, `parent_id`, `nickname`, 
 INSERT IGNORE INTO `blog_link` (`id`, `name`, `url`, `avatar`, `description`, `sort`, `status`, `create_time`, `update_time`, `create_by`, `update_by`, `is_deleted`) VALUES
 (1, '有来技术文档', 'https://www.youlai.tech', NULL, 'youlai-boot 与 vue3-element-admin 官方文档', 1, 1, now(), now(), 2, 2, 0),
 (2, 'Spring Boot', 'https://spring.io/projects/spring-boot', NULL, 'Java 企业级应用开发主流框架', 2, 1, now(), now(), 2, 2, 0);
+
+INSERT IGNORE INTO `blog_learning_path` (`id`, `title`, `slug`, `summary`, `cover_color`, `tree_json`, `sort`, `status`, `create_time`, `update_time`, `create_by`, `update_by`, `is_deleted`) VALUES
+(1, 'youlai-boot 全栈博客进阶路线', 'youlai-boot-fullstack', '从服务端架构、Redis 缓存防刷到 Vue 3 前端交互的完整实战路线图，每个节点均挂载对应文章、视频与参考网页。', '#0d9488', '{"id":"node-root","label":"全栈博客工程体系","description":"基于 Spring Boot + Vue 3 + MySQL + Redis 搭建可迭代个人博客的完整知识脉络。","tag":"主线","collapsed":false,"resources":[{"id":"res-intro-art","type":"article","title":"欢迎来到我的个人博客：基于 youlai-boot 全栈搭建记录","articleId":"1","articleSlug":"welcome-to-myblog","note":"架构总览与选型说明"}],"children":[{"id":"node-backend","label":"服务端架构与数据","description":"Spring Boot 4 接口分层、MyBatis-Plus 持久化与 Spring Security RBAC 鉴权。","tag":"核心","collapsed":false,"resources":[{"id":"res-sb-doc","type":"webpage","title":"Spring Boot 官方文档","url":"https://docs.spring.io/spring-boot/index.html","note":"核心配置与自动装配指南"},{"id":"res-youlai-doc","type":"webpage","title":"有来开源技术文档","url":"https://www.youlai.tech","note":"youlai-boot 与 vue3-element-admin 脚手架参考"}],"children":[{"id":"node-redis","label":"Redis 缓存与防刷","description":"利用 Redis 缓存站点配置/正文、按 IP 去重统计阅读量、滑动窗口限流防灌水。","tag":"实战","collapsed":false,"resources":[{"id":"res-redis-art","type":"article","title":"Redis 在个人博客中的三个实用场景","articleId":"2","articleSlug":"redis-in-personal-blog","note":"站内深度实战解析"},{"id":"res-redis-doc","type":"webpage","title":"Redis 官方命令参考","url":"https://redis.io/docs/latest/commands/","note":"String / SetIfAbsent 与 TTL 用法"}]},{"id":"node-security","label":"鉴权与接口防刷","description":"JWT 令牌、RBAC 权限注解 @PreAuthorize 与 @RateLimit 注解保护。","tag":"核心","collapsed":false,"resources":[{"id":"res-sec-vid","type":"video","title":"Spring Security 实战精讲（B站参考课程）","url":"https://www.bilibili.com/video/BV1mm4y1X7Hc","note":"支持直接在导图工作台播放或新窗打开"}]}]},{"id":"node-frontend","label":"前台工程与交互动效","description":"Vue 3 组合式 API、Markdown 渲染、划词批注与容器无缝转场动画。","tag":"核心","collapsed":false,"resources":[{"id":"res-vue-doc","type":"webpage","title":"Vue 3 官方中文文档","url":"https://cn.vuejs.org/guide/introduction.html","note":"组合式 API 与响应式原理"},{"id":"res-vue-vid","type":"video","title":"Vue 3 + TypeScript 核心教程（B站参考视频）","url":"https://www.bilibili.com/video/BV1Za4y1r7KE","note":"前端工程化组件设计"}],"children":[{"id":"node-deploy","label":"Docker 编排与 Nginx 网关","description":"Docker Compose 多容器协同、Gzip 压缩与静动态分级缓存策略。","tag":"拓展","collapsed":false,"resources":[{"id":"res-nginx-doc","type":"webpage","title":"Nginx Caching & Gzip Guide","url":"https://nginx.org/en/docs/http/ngx_http_gzip_module.html","note":"构建产物强缓存与压缩配置"}]}]}]}', 1, 1, now(), now(), 2, 2, 0);
 

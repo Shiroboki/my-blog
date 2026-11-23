@@ -1,5 +1,14 @@
 <template>
-  <div class="lamp-pull-anchor" :class="{ 'is-dark': isDark }">
+  <div
+    class="lamp-pull-anchor"
+    :class="{
+      'is-dark': isDark,
+      'show-hint': showHint || isDragging || isHovered,
+    }"
+  >
+    <span class="lamp-hint" role="status" aria-hidden="true">
+      {{ isArmed ? "松手切换" : isDark ? "下拉开灯" : "下拉关灯" }}
+    </span>
     <svg
       class="lamp-svg"
       viewBox="0 0 56 140"
@@ -7,6 +16,8 @@
       tabindex="0"
       :aria-checked="isDark"
       :aria-label="isDark ? '浅色模式已关闭，向下拉拽绳子开灯切换浅色模式' : '已开启浅色模式，向下拉拽绳子关灯切换深色模式'"
+      @focus="isHovered = true"
+      @blur="isHovered = false"
       @keydown.enter.prevent="triggerClickPull"
       @keydown.space.prevent="triggerClickPull"
     >
@@ -58,7 +69,8 @@
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
         @pointercancel="onPointerCancel"
-        @pointerenter="nudgeCord"
+        @pointerenter="handlePointerEnter"
+        @pointerleave="isHovered = false"
       >
         <!-- 扩大抓取点击热区，避免细绳难选中 -->
         <rect
@@ -112,6 +124,11 @@ const stretch = ref(0);
 const idleAngle = ref(0);
 const swingAngle = ref(0);
 const isDragging = ref(false);
+const isHovered = ref(false);
+const showHint = ref(false);
+
+const LAMP_HINT_STORAGE_KEY = "myblog_lamp_hint_seen";
+let hintTimer: number | null = null;
 
 const totalAngle = computed(() => idleAngle.value + swingAngle.value);
 const cordLength = computed(() => BASE_CORD_LENGTH + Math.max(-5, stretch.value));
@@ -173,6 +190,11 @@ function stepPhysics(now: number) {
   rafId = window.requestAnimationFrame(stepPhysics);
 }
 
+function handlePointerEnter() {
+  isHovered.value = true;
+  nudgeCord();
+}
+
 function nudgeCord() {
   if (isDragging.value || reducedMotion) return;
   swingVel += swingAngle.value >= 0 ? -36 : 36;
@@ -181,6 +203,7 @@ function nudgeCord() {
 function triggerClickPull() {
   stretchVel = 290;
   swingVel += swingAngle.value >= 0 ? 44 : -44;
+  showHint.value = false;
   emit("toggle");
 }
 
@@ -212,6 +235,7 @@ function onPointerMove(e: PointerEvent) {
 
   if (!toggledDuringDrag && nextStretch >= TOGGLE_STRETCH_THRESHOLD) {
     toggledDuringDrag = true;
+    showHint.value = false;
     emit("toggle");
   }
 }
@@ -245,11 +269,26 @@ function onPointerCancel(e: PointerEvent) {
 onMounted(() => {
   reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   rafId = window.requestAnimationFrame(stepPhysics);
+  try {
+    if (!localStorage.getItem(LAMP_HINT_STORAGE_KEY)) {
+      showHint.value = true;
+      localStorage.setItem(LAMP_HINT_STORAGE_KEY, "1");
+      hintTimer = window.setTimeout(() => {
+        showHint.value = false;
+        hintTimer = null;
+      }, 3600);
+    }
+  } catch {
+    // 忽略本地存储异常
+  }
 });
 
 onUnmounted(() => {
   if (rafId !== null) {
     window.cancelAnimationFrame(rafId);
+  }
+  if (hintTimer !== null) {
+    window.clearTimeout(hintTimer);
   }
 });
 </script>
@@ -264,6 +303,30 @@ onUnmounted(() => {
   height: 140px;
   pointer-events: none;
   user-select: none;
+}
+
+.lamp-hint {
+  position: absolute;
+  top: 78px;
+  right: 48px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-glass-strong);
+  box-shadow: var(--shadow-glass);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(6px);
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.lamp-pull-anchor.show-hint .lamp-hint {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .lamp-svg {
@@ -392,6 +455,10 @@ onUnmounted(() => {
     right: 8px;
     width: 48px;
     height: 124px;
+  }
+
+  .lamp-hint {
+    display: none;
   }
 }
 </style>

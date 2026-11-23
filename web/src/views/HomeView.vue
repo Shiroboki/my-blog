@@ -104,6 +104,7 @@
                 class="search-input"
                 placeholder="标题、摘要或正文（/）"
                 :tabindex="searchExpanded ? 0 : -1"
+                @input="scheduleSearch"
                 @keyup.enter="handleSearch"
               />
               <button
@@ -133,196 +134,104 @@
           </div>
         </div>
 
-        <!-- 骨架屏 -->
-        <template v-if="loading">
-          <div class="card skeleton-lead">
-            <div class="skeleton-line w-1/4" />
-            <div class="skeleton-line w-3/4 h-lg" />
-            <div class="skeleton-line w-full" />
-            <div class="skeleton-line w-2/3" />
-          </div>
-          <div class="skeleton-feed">
-            <div v-for="n in 3" :key="n" class="skeleton-row">
+        <!-- 局部列表区域：仅初次空载显示骨架屏，筛选/切换标签保持局部平滑刷新，避免整栏闪烁与右侧抖动 -->
+        <div class="feed-stage" :class="{ 'is-filtering': filtering }" :aria-busy="loading || filtering">
+          <div class="feed-loading-bar" aria-hidden="true" />
+
+          <template v-if="loading && !hasLoadedOnce">
+            <div class="card skeleton-lead">
               <div class="skeleton-line w-1/4" />
-              <div class="skeleton-line w-2/3 h-lg" />
+              <div class="skeleton-line w-3/4 h-lg" />
               <div class="skeleton-line w-full" />
+              <div class="skeleton-line w-2/3" />
             </div>
+            <div class="skeleton-feed">
+              <div v-for="n in 3" :key="n" class="skeleton-row">
+                <div class="skeleton-line w-1/4" />
+                <div class="skeleton-line w-2/3 h-lg" />
+                <div class="skeleton-line w-full" />
+              </div>
+            </div>
+          </template>
+
+          <div v-else-if="!articles.length" class="empty-card card">
+            <div class="empty-title">暂无符合条件的文章</div>
+            <p class="empty-desc">
+              {{ hasAnyFilter ? "当前筛选或搜索词下没有匹配结果，可以重置条件浏览全部文章。" : "还没有公开发布的文章。" }}
+            </p>
+            <button v-if="hasAnyFilter" type="button" class="btn btn-primary" @click="resetFilters">
+              查看全部文章
+            </button>
           </div>
-        </template>
 
-        <div v-else-if="!articles.length" class="empty-card card animate-rise">
-          <div class="empty-title">暂无符合条件的文章</div>
-          <p class="empty-desc">
-            {{ hasAnyFilter ? "当前筛选或搜索词下没有匹配结果，可以重置条件浏览全部文章。" : "还没有公开发布的文章。" }}
-          </p>
-          <button v-if="hasAnyFilter" type="button" class="btn btn-primary" @click="resetFilters">
-            查看全部文章
-          </button>
-        </div>
-
-        <template v-else>
-          <!-- 精选头条（无筛选第1页第1篇）：克制纸感主卡，去掉多余方格嵌套 -->
-          <article
-            v-if="featuredArticle"
-            data-morph-card="feed"
-            :data-article-id="featuredArticle.id"
-            class="featured-lead card card-interactive"
-            :class="{
-              'has-cover': Boolean(featuredArticle.coverImage),
-              'animate-rise': !skipRiseOnRestore,
-              'is-morph-hidden':
-                hiddenHomeArticleId === featuredArticle.id && hiddenHomeOriginKind === 'feed',
-            }"
-            :style="{ '--stagger': 0 }"
-            @pointerenter="warmupArticle(featuredArticle.id)"
-            @click.capture="captureOriginOnCardClick(featuredArticle, 'feed', $event)"
-          >
-            <div class="lead-main">
-              <div class="lead-meta">
-                <span class="lead-badge">
-                  {{ featuredArticle.isTop === 1 ? "置顶精选" : "最新推荐" }}
-                </span>
-                <span class="mono-meta">
-                  {{ formatDate(featuredArticle.publishTime || featuredArticle.createTime) }}
-                </span>
-                <template v-if="featuredArticle.categoryName && featuredArticle.categoryId">
-                  <span class="meta-dot" aria-hidden="true">·</span>
-                  <button
-                    type="button"
-                    class="inline-cat-btn"
-                    @click="selectCategory(featuredArticle.categoryId)"
-                  >
-                    {{ featuredArticle.categoryName }}
-                  </button>
-                </template>
-                <span class="meta-dot" aria-hidden="true">·</span>
-                <span class="mono-meta">约 {{ featuredArticle.readingMinutes || 1 }} 分钟阅读</span>
-                <span v-if="!featuredArticle.coverImage" class="lead-issue">NO. 01</span>
-              </div>
-
-              <h2 class="lead-title">
-                <RouterLink :to="`/article/${featuredArticle.id}`">
-                  {{ featuredArticle.title }}
-                </RouterLink>
-              </h2>
-
-              <p v-if="featuredArticle.summary" class="lead-summary">
-                {{ featuredArticle.summary }}
-              </p>
-
-              <div class="lead-footer">
-                <div class="hash-tags">
-                  <button
-                    v-for="tag in featuredArticle.tags || []"
-                    :key="tag.id"
-                    type="button"
-                    class="hash-tag-btn"
-                    @click="selectTag(tag.id)"
-                  >
-                    #{{ tag.name }}
-                  </button>
-                </div>
-
-                <div class="lead-footer-right">
-                  <span class="mono-stat">阅读 {{ featuredArticle.viewCount ?? 0 }}</span>
-                  <RouterLink :to="`/article/${featuredArticle.id}`" class="editorial-read-link">
-                    <span>阅读全文</span>
-                    <svg viewBox="0 0 24 24" class="arrow-icon" aria-hidden="true">
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                      <polyline points="12 5 19 12 12 19" />
-                    </svg>
-                  </RouterLink>
-                </div>
-              </div>
-            </div>
-
-            <RouterLink
-              v-if="featuredArticle.coverImage"
-              :to="`/article/${featuredArticle.id}`"
-              class="lead-cover"
-              :aria-label="featuredArticle.title"
+          <template v-else>
+            <!-- 精选头条（无筛选第1页第1篇）：克制纸感主卡，去掉多余方格嵌套 -->
+            <article
+              v-if="featuredArticle"
+              data-morph-card="feed"
+              :data-article-id="featuredArticle.id"
+              class="featured-lead card card-interactive"
+              :class="{
+                'has-cover': Boolean(featuredArticle.coverImage),
+                'animate-rise': shouldAnimateFeedCards,
+                'is-morph-hidden':
+                  hiddenHomeArticleId === featuredArticle.id && hiddenHomeOriginKind === 'feed',
+              }"
+              :style="{ '--stagger': 0 }"
+              @pointerenter="warmupArticle(featuredArticle.id)"
+              @click.capture="captureOriginOnCardClick(featuredArticle, 'feed', $event)"
+              @click="handleCardContainerClick(featuredArticle, 'feed', $event)"
             >
-              <img :src="featuredArticle.coverImage" :alt="featuredArticle.title" loading="lazy" />
-            </RouterLink>
-          </article>
-
-          <!-- 极简线性编辑文章列表（Clean Editorial Feed） -->
-          <section v-if="streamArticles.length" class="editorial-feed">
-            <div class="feed-section-head">
-              <span class="feed-section-label">
-                {{ showSpotlight ? "近期文章" : hasAnyFilter ? "筛选结果" : "全部文章" }}
-              </span>
-              <span class="feed-section-count">
-                {{ formatOrdinal(streamArticles.length) }} 篇
-              </span>
-            </div>
-
-            <div class="feed-list">
-              <article
-                v-for="(item, idx) in streamArticles"
-                :key="item.id"
-                data-morph-card="feed"
-                :data-article-id="item.id"
-                class="feed-row"
-                :class="{
-                  'has-thumb': Boolean(item.coverImage),
-                  'animate-rise': !skipRiseOnRestore,
-                  'is-morph-hidden':
-                    hiddenHomeArticleId === item.id && hiddenHomeOriginKind === 'feed',
-                }"
-                :style="{ '--stagger': idx + 1 }"
-                @pointerenter="warmupArticle(item.id)"
-                @click.capture="captureOriginOnCardClick(item, 'feed', $event)"
-              >
-                <div class="feed-date-col">
-                  <time class="feed-date">
-                    {{ formatDate(item.publishTime || item.createTime) }}
-                  </time>
-                  <span v-if="item.readingMinutes" class="feed-duration">
-                    约 {{ item.readingMinutes }} 分钟
+              <div class="lead-main">
+                <div class="lead-meta">
+                  <span class="lead-badge">
+                    {{ featuredArticle.isTop === 1 ? "置顶精选" : "最新推荐" }}
                   </span>
-                </div>
-
-                <div class="feed-body-col">
-                  <div class="feed-eyebrow">
-                    <span class="feed-ordinal">
-                      #{{ formatOrdinal(showSpotlight ? idx + 2 : idx + 1) }}
-                    </span>
-                    <span v-if="item.isTop === 1" class="feed-pin">置顶</span>
+                  <span class="mono-meta">
+                    {{ formatDate(featuredArticle.publishTime || featuredArticle.createTime) }}
+                  </span>
+                  <template v-if="featuredArticle.categoryName && featuredArticle.categoryId">
+                    <span class="meta-dot" aria-hidden="true">·</span>
                     <button
-                      v-if="item.categoryName && item.categoryId"
                       type="button"
                       class="inline-cat-btn"
-                      @click="selectCategory(item.categoryId)"
+                      @click="selectCategory(featuredArticle.categoryId)"
                     >
-                      {{ item.categoryName }}
+                      {{ featuredArticle.categoryName }}
                     </button>
-                    <span class="feed-stats">
-                      阅读 {{ item.viewCount ?? 0 }} · 评论 {{ item.commentCount ?? 0 }}
-                    </span>
+                  </template>
+                  <span class="meta-dot" aria-hidden="true">·</span>
+                  <span class="mono-meta">约 {{ featuredArticle.readingMinutes || 1 }} 分钟阅读</span>
+                  <span v-if="!featuredArticle.coverImage" class="lead-issue">NO. 01</span>
+                </div>
+
+                <h2 class="lead-title">
+                  <RouterLink :to="getArticleRoute(featuredArticle)">
+                    {{ featuredArticle.title }}
+                  </RouterLink>
+                </h2>
+
+                <p v-if="featuredArticle.summary" class="lead-summary">
+                  {{ featuredArticle.summary }}
+                </p>
+
+                <div class="lead-footer">
+                  <div class="hash-tags">
+                    <button
+                      v-for="tag in featuredArticle.tags || []"
+                      :key="tag.id"
+                      type="button"
+                      class="hash-tag-btn"
+                      @click="selectTag(tag.id)"
+                    >
+                      #{{ tag.name }}
+                    </button>
                   </div>
 
-                  <h3 class="feed-title">
-                    <RouterLink :to="`/article/${item.id}`">{{ item.title }}</RouterLink>
-                  </h3>
-
-                  <p v-if="item.summary" class="feed-summary">{{ item.summary }}</p>
-
-                  <div class="feed-row-footer">
-                    <div class="hash-tags">
-                      <button
-                        v-for="tag in (item.tags || []).slice(0, 4)"
-                        :key="tag.id"
-                        type="button"
-                        class="hash-tag-btn"
-                        @click="selectTag(tag.id)"
-                      >
-                        #{{ tag.name }}
-                      </button>
-                    </div>
-
-                    <RouterLink :to="`/article/${item.id}`" class="editorial-read-link">
-                      <span>阅读</span>
+                  <div class="lead-footer-right">
+                    <span class="mono-stat">阅读 {{ featuredArticle.viewCount ?? 0 }}</span>
+                    <RouterLink :to="getArticleRoute(featuredArticle)" class="editorial-read-link">
+                      <span>阅读全文</span>
                       <svg viewBox="0 0 24 24" class="arrow-icon" aria-hidden="true">
                         <line x1="5" y1="12" x2="19" y2="12" />
                         <polyline points="12 5 19 12 12 19" />
@@ -330,33 +239,131 @@
                     </RouterLink>
                   </div>
                 </div>
+              </div>
 
-                <RouterLink
-                  v-if="item.coverImage"
-                  :to="`/article/${item.id}`"
-                  class="feed-thumb"
-                  :aria-label="item.title"
+              <RouterLink
+                v-if="featuredArticle.coverImage"
+                :to="getArticleRoute(featuredArticle)"
+                class="lead-cover"
+                :aria-label="featuredArticle.title"
+              >
+                <img :src="featuredArticle.coverImage" :alt="featuredArticle.title" loading="lazy" />
+              </RouterLink>
+            </article>
+
+            <!-- 极简线性编辑文章列表（Clean Editorial Feed） -->
+            <section v-if="streamArticles.length" class="editorial-feed">
+              <div class="feed-section-head">
+                <span class="feed-section-label">
+                  {{ showSpotlight ? "近期文章" : hasAnyFilter ? "筛选结果" : "全部文章" }}
+                </span>
+                <span class="feed-section-count">
+                  {{ formatOrdinal(streamArticles.length) }} 篇
+                </span>
+              </div>
+
+              <div class="feed-list">
+                <article
+                  v-for="(item, idx) in streamArticles"
+                  :key="item.id"
+                  data-morph-card="feed"
+                  :data-article-id="item.id"
+                  class="feed-row"
+                  :class="{
+                    'has-thumb': Boolean(item.coverImage),
+                    'animate-rise': shouldAnimateFeedCards,
+                    'is-morph-hidden':
+                      hiddenHomeArticleId === item.id && hiddenHomeOriginKind === 'feed',
+                  }"
+                  :style="{ '--stagger': idx + 1 }"
+                  @pointerenter="warmupArticle(item.id)"
+                  @click.capture="captureOriginOnCardClick(item, 'feed', $event)"
+                  @click="handleCardContainerClick(item, 'feed', $event)"
                 >
-                  <img :src="item.coverImage" :alt="item.title" loading="lazy" />
-                </RouterLink>
-              </article>
-            </div>
-          </section>
-        </template>
+                  <div class="feed-date-col">
+                    <time class="feed-date">
+                      {{ formatDate(item.publishTime || item.createTime) }}
+                    </time>
+                    <span v-if="item.readingMinutes" class="feed-duration">
+                      约 {{ item.readingMinutes }} 分钟
+                    </span>
+                  </div>
 
-        <div v-if="total > pageSize" class="pagination-bar">
-          <button type="button" class="btn" :disabled="pageNum <= 1" @click="changePage(pageNum - 1)">
-            上一页
-          </button>
-          <span class="page-info">第 {{ pageNum }} / {{ totalPages }} 页（共 {{ total }} 篇）</span>
-          <button
-            type="button"
-            class="btn"
-            :disabled="pageNum >= totalPages"
-            @click="changePage(pageNum + 1)"
-          >
-            下一页
-          </button>
+                  <div class="feed-body-col">
+                    <div class="feed-eyebrow">
+                      <span class="feed-ordinal">
+                        #{{ formatOrdinal(showSpotlight ? idx + 2 : idx + 1) }}
+                      </span>
+                      <span v-if="item.isTop === 1" class="feed-pin">置顶</span>
+                      <button
+                        v-if="item.categoryName && item.categoryId"
+                        type="button"
+                        class="inline-cat-btn"
+                        @click="selectCategory(item.categoryId)"
+                      >
+                        {{ item.categoryName }}
+                      </button>
+                      <span class="feed-stats">
+                        阅读 {{ item.viewCount ?? 0 }} · 评论 {{ item.commentCount ?? 0 }}
+                      </span>
+                    </div>
+
+                    <h3 class="feed-title">
+                      <RouterLink :to="getArticleRoute(item)">{{ item.title }}</RouterLink>
+                    </h3>
+
+                    <p v-if="item.summary" class="feed-summary">{{ item.summary }}</p>
+
+                    <div class="feed-row-footer">
+                      <div class="hash-tags">
+                        <button
+                          v-for="tag in (item.tags || []).slice(0, 4)"
+                          :key="tag.id"
+                          type="button"
+                          class="hash-tag-btn"
+                          @click="selectTag(tag.id)"
+                        >
+                          #{{ tag.name }}
+                        </button>
+                      </div>
+
+                      <RouterLink :to="getArticleRoute(item)" class="editorial-read-link">
+                        <span>阅读</span>
+                        <svg viewBox="0 0 24 24" class="arrow-icon" aria-hidden="true">
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                          <polyline points="12 5 19 12 12 19" />
+                        </svg>
+                      </RouterLink>
+                    </div>
+                  </div>
+
+                  <RouterLink
+                    v-if="item.coverImage"
+                    :to="getArticleRoute(item)"
+                    class="feed-thumb"
+                    :aria-label="item.title"
+                  >
+                    <img :src="item.coverImage" :alt="item.title" loading="lazy" />
+                  </RouterLink>
+                </article>
+              </div>
+            </section>
+          </template>
+
+          <div v-if="total > pageSize" class="pagination-bar">
+            <button type="button" class="btn" :disabled="pageNum <= 1" @click="changePage(pageNum - 1)">
+              上一页
+            </button>
+            <span class="page-info">第 {{ pageNum }} / {{ totalPages }} 页（共 {{ total }} 篇）</span>
+            <button
+              type="button"
+              class="btn"
+              :disabled="pageNum >= totalPages"
+              @click="changePage(pageNum + 1)"
+            >
+              下一页
+            </button>
+          </div>
         </div>
       </section>
 
@@ -376,7 +383,7 @@
             <ul class="hot-list">
               <li v-for="(hot, idx) in siteInfo.hotArticles" :key="hot.id">
                 <RouterLink
-                  :to="`/article/${hot.id}`"
+                  :to="getArticleRoute(hot)"
                   data-morph-card="hot"
                   :data-article-id="hot.id"
                   class="hot-link"
@@ -440,6 +447,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   blogApi,
+  getArticleRoute,
   type BlogArticleItem,
   type BlogCategory,
   type BlogTag,
@@ -465,8 +473,12 @@ const homePageRef = ref<HTMLElement | null>(null);
 
 const initialSnapshot = peekFreshHomeSnapshot(route.fullPath);
 const skipRiseOnRestore = ref(Boolean(initialSnapshot));
+const hasLoadedOnce = ref(Boolean(initialSnapshot));
+const shouldAnimateFeedCards = ref(!initialSnapshot);
 
 const loading = ref(false);
+const filtering = ref(false);
+let latestFetchSeq = 0;
 const articles = ref<BlogArticleItem[]>(initialSnapshot?.articles.map((item) => ({ ...item })) ?? []);
 const total = ref(initialSnapshot?.total ?? 0);
 const pageNum = ref(1);
@@ -578,7 +590,24 @@ function isPlainNavigationClick(e: MouseEvent) {
 }
 
 function warmupArticle(id: string) {
-  void prefetchArticleDetail(id, () => blogApi.getArticleDetail(id));
+  void prefetchArticleDetail(id, () => blogApi.getArticleDetail(id, { trackView: false }));
+}
+
+function beginMorphFromSource(
+  preview: ArticlePreviewSeed,
+  originKind: MorphOriginKind,
+  sourceEl: HTMLElement,
+) {
+  warmupArticle(preview.id);
+  saveHomeSnapshot({
+    queryKey: route.fullPath,
+    articles: articles.value,
+    total: total.value,
+    categories: categories.value,
+    tags: tags.value,
+    scrollY: window.scrollY,
+  });
+  prepareEnterMorph(preview, originKind, sourceEl, homePageRef.value);
 }
 
 function captureOriginOnCardClick(
@@ -592,51 +621,55 @@ function captureOriginOnCardClick(
   const cardEl = e.currentTarget as HTMLElement | null;
   if (!cardEl) return;
 
-  warmupArticle(preview.id);
-  saveHomeSnapshot({
-    queryKey: route.fullPath,
-    articles: articles.value,
-    total: total.value,
-    categories: categories.value,
-    tags: tags.value,
-    scrollY: window.scrollY,
-  });
-  prepareEnterMorph(preview, originKind, cardEl, homePageRef.value);
+  beginMorphFromSource(preview, originKind, cardEl);
+}
+
+function handleCardContainerClick(
+  preview: ArticlePreviewSeed,
+  originKind: MorphOriginKind,
+  e: MouseEvent,
+) {
+  if (!isPlainNavigationClick(e)) return;
+  const targetEl = e.target as HTMLElement | null;
+  if (targetEl?.closest("a, button, input, label")) return;
+  if (window.getSelection()?.toString().trim()) return;
+  const cardEl = e.currentTarget as HTMLElement | null;
+  if (!cardEl) return;
+
+  beginMorphFromSource(preview, originKind, cardEl);
+  void router.push(getArticleRoute(preview));
 }
 
 function captureHotOriginOnClick(
-  hot: { id: string; title: string; publishTime?: string; viewCount: number },
+  hot: { id: string; slug?: string; title: string; publishTime?: string; viewCount: number },
   e: MouseEvent,
 ) {
   if (!isPlainNavigationClick(e)) return;
   const linkEl = e.currentTarget as HTMLElement | null;
   if (!linkEl) return;
 
-  warmupArticle(hot.id);
-  saveHomeSnapshot({
-    queryKey: route.fullPath,
-    articles: articles.value,
-    total: total.value,
-    categories: categories.value,
-    tags: tags.value,
-    scrollY: window.scrollY,
-  });
-  prepareEnterMorph(
+  beginMorphFromSource(
     {
       id: hot.id,
+      slug: hot.slug,
       title: hot.title,
       publishTime: hot.publishTime,
       viewCount: Number(hot.viewCount || 0),
     },
     "hot",
     linkEl,
-    homePageRef.value,
   );
 }
 
 async function fetchArticles(options: { silent?: boolean } = {}) {
+  const fetchSeq = ++latestFetchSeq;
+  const isFirstFetch = !hasLoadedOnce.value;
   if (!options.silent) {
-    loading.value = true;
+    if (isFirstFetch) {
+      loading.value = true;
+    } else {
+      filtering.value = true;
+    }
   }
   try {
     const res = await blogApi.getArticles({
@@ -646,14 +679,25 @@ async function fetchArticles(options: { silent?: boolean } = {}) {
       categoryId: activeCategoryId.value,
       tagId: activeTagId.value,
     });
+    if (fetchSeq !== latestFetchSeq) return;
     articles.value = res.list ?? [];
     total.value = res.total ?? 0;
+    hasLoadedOnce.value = true;
+    if (!isFirstFetch) {
+      shouldAnimateFeedCards.value = false;
+    }
     for (const item of articles.value.slice(0, 5)) {
       warmupArticle(item.id);
     }
   } finally {
-    if (!options.silent) {
+    if (fetchSeq === latestFetchSeq) {
       loading.value = false;
+      filtering.value = false;
+      if (isFirstFetch && hasLoadedOnce.value) {
+        window.setTimeout(() => {
+          shouldAnimateFeedCards.value = false;
+        }, 560);
+      }
     }
   }
 }
@@ -670,13 +714,32 @@ function syncRouteQuery() {
   });
 }
 
+let searchDebounceTimer: number | null = null;
+
+function clearSearchDebounce() {
+  if (searchDebounceTimer !== null) {
+    window.clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = null;
+  }
+}
+
+function scheduleSearch() {
+  clearSearchDebounce();
+  searchDebounceTimer = window.setTimeout(() => {
+    searchDebounceTimer = null;
+    handleSearch();
+  }, 320);
+}
+
 function handleSearch() {
+  clearSearchDebounce();
   pageNum.value = 1;
   syncRouteQuery();
   fetchArticles();
 }
 
 function clearKeywords() {
+  clearSearchDebounce();
   keywords.value = "";
   handleSearch();
   nextTick(() => {
@@ -794,6 +857,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  clearSearchDebounce();
   window.removeEventListener("keydown", handleGlobalKeydown);
   document.removeEventListener("click", handleDocumentClick);
   dockObserver?.disconnect();
@@ -968,6 +1032,48 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.feed-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 460px;
+  transition: opacity 0.16s ease;
+}
+
+.feed-stage.is-filtering {
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.feed-loading-bar {
+  position: absolute;
+  top: -8px;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
+  background-size: 200% 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease 0.08s;
+}
+
+.feed-stage.is-filtering .feed-loading-bar {
+  opacity: 1;
+  animation: feedProgressSlide 1.1s linear infinite;
+}
+
+@keyframes feedProgressSlide {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .dock-sentinel {
   height: 1px;
   margin-bottom: -21px;
@@ -1019,13 +1125,16 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-  padding: 6px 12px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: var(--radius-chip);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background-color 0.18s ease,
@@ -1040,7 +1149,7 @@ onUnmounted(() => {
 
 .filter-tab.active {
   color: var(--text-primary);
-  font-weight: 600;
+  text-shadow: 0 0 0.4px currentColor;
   background: var(--bg-subtle);
   border-color: var(--border-subtle);
 }
@@ -1214,6 +1323,7 @@ html.dark .search-capsule.is-expanded .search-circle-btn {
   padding: 28px 32px;
   background: var(--morph-surface);
   border-radius: var(--radius-card-sm);
+  cursor: pointer;
 }
 
 .featured-lead.has-cover {
@@ -1445,6 +1555,7 @@ html.dark .search-capsule.is-expanded .search-circle-btn {
   margin: 0 -14px;
   border-radius: var(--radius-dock);
   border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
@@ -1782,6 +1893,7 @@ html.dark .search-capsule.is-expanded .search-circle-btn {
   background: var(--bg-subtle);
   color: var(--text-secondary);
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease;
 }
@@ -1795,7 +1907,7 @@ html.dark .search-capsule.is-expanded .search-circle-btn {
   color: var(--accent);
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-  font-weight: 600;
+  text-shadow: 0 0 0.35px currentColor;
 }
 
 .tag-count {
@@ -1808,6 +1920,10 @@ html.dark .search-capsule.is-expanded .search-circle-btn {
   .home-grid {
     grid-template-columns: 1fr;
     gap: 24px;
+  }
+
+  .feed-stage {
+    min-height: 0;
   }
 
   .side-fixed-stack {

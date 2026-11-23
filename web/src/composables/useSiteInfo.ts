@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { blogApi, type BlogSiteInfo } from "@/api/blog";
+import { setSeoSiteConfig } from "@/utils/seo";
 
 const siteInfo = ref<BlogSiteInfo | null>(null);
 const loading = ref(false);
@@ -15,8 +16,11 @@ export function useSiteInfo() {
       .getSiteInfo()
       .then((data) => {
         siteInfo.value = data;
-        if (data.siteTitle && window.location.pathname === "/") {
+        setSeoSiteConfig(data.siteTitle, data.siteSubtitle);
+        if (window.location.pathname === "/" && data.siteTitle) {
           document.title = data.siteTitle;
+        } else if (data.siteTitle && document.title.endsWith(" - MyBlog")) {
+          document.title = document.title.replace(/ - MyBlog$/, ` - ${data.siteTitle}`);
         }
         return data;
       })

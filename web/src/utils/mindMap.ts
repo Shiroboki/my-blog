@@ -162,21 +162,21 @@ export function cloneMindMapTree(node: MindMapNode): MindMapNode {
 }
 
 function estimateNodeSize(node: MindMapNode, depth: number): { width: number; height: number } {
-  const width = depth === 0 ? 228 : 210;
+  const width = depth === 0 ? 224 : depth === 1 ? 208 : 198;
   let units = 0;
   for (const ch of node.label || "") {
     units += ch.charCodeAt(0) > 127 ? 2 : 1.08;
   }
-  const maxUnitsPerLine = depth === 0 ? 23 : 21;
+  const hasTag = Boolean(node.tag?.trim());
+  const baseUnits = depth === 0 ? 19.5 : 17.5;
+  const maxUnitsPerLine = Math.max(10.5, baseUnits - (hasTag ? 5.2 : 0));
   const lines = Math.min(3, Math.max(1, Math.ceil(units / maxUnitsPerLine)));
-  const hasFooter = Boolean(node.tag?.trim()) || node.resources.length > 0;
-  const hasDesc = Boolean(node.description?.trim());
+  const hasFooter = node.resources.length > 0;
   const height =
-    24 +
+    (depth === 0 ? 26 : 22) +
     lines * 20 +
-    (hasDesc ? 18 : 0) +
-    (hasFooter ? 26 : 4);
-  return { width, height: Math.max(58, Math.min(138, height)) };
+    (hasFooter ? 24 : 4);
+  return { width, height: Math.max(48, Math.min(120, height)) };
 }
 
 function countHiddenDescendants(node: MindMapNode): number {
@@ -209,10 +209,10 @@ interface MeasureTree {
   children: MeasureTree[];
 }
 
-const LAYOUT_GAP_X = 72;
-const LAYOUT_GAP_Y = 20;
-const LAYOUT_PAD_X = 48;
-const LAYOUT_PAD_Y = 48;
+const LAYOUT_GAP_X = 64;
+const LAYOUT_GAP_Y = 22;
+const LAYOUT_PAD_X = 44;
+const LAYOUT_PAD_Y = 52;
 
 function measureSubtree(
   node: MindMapNode,
@@ -556,6 +556,52 @@ export function parseVideoEmbed(rawUrl?: string): ParsedVideoSource | null {
     kind: "external",
     externalUrl: url,
   };
+}
+
+export function findParentNode(root: MindMapNode, targetId: string): MindMapNode | null {
+  for (const child of root.children) {
+    if (child.id === targetId) return root;
+    const found = findParentNode(child, targetId);
+    if (found) return found;
+  }
+  return null;
+}
+
+export function findNextSiblingOrParent(root: MindMapNode, targetId: string): string {
+  const parent = findParentNode(root, targetId);
+  if (!parent) return root.id;
+  const idx = parent.children.findIndex((c) => c.id === targetId);
+  if (idx >= 0 && parent.children.length > 1) {
+    const next = parent.children[idx + 1] ?? parent.children[idx - 1];
+    if (next) return next.id;
+  }
+  return parent.id;
+}
+
+export function findAdjacentSiblingId(
+  root: MindMapNode,
+  targetId: string,
+  direction: -1 | 1,
+): string | null {
+  const parent = findParentNode(root, targetId);
+  if (!parent) return null;
+  const idx = parent.children.findIndex((c) => c.id === targetId);
+  const next = parent.children[idx + direction];
+  return next ? next.id : null;
+}
+
+export function suggestResourceTitle(type: MindMapResourceType, rawUrl?: string): string {
+  if (!rawUrl || !rawUrl.trim()) {
+    return type === "video" ? "视频讲解" : "参考网页";
+  }
+  if (type === "video") {
+    const parsed = parseVideoEmbed(rawUrl);
+    if (parsed?.platform) {
+      return `${parsed.platform} 视频教程`;
+    }
+  }
+  const host = extractDomainHost(rawUrl).replace(/^www\./i, "");
+  return host || (type === "video" ? "视频讲解" : "参考网页");
 }
 
 const ADMIN_TOKEN_KEY = "vea:auth:access_token";

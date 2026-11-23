@@ -145,17 +145,16 @@ function summarizeResources(resources: MindMapResource[]) {
 }
 
 function estimateNodeSize(node: MindMapNode, depth: number): { width: number; height: number } {
-  const width = depth === 0 ? 204 : 188;
+  const width = depth === 0 ? 204 : 186;
   let units = 0;
   for (const ch of node.label || "") {
     units += ch.charCodeAt(0) > 127 ? 2 : 1.08;
   }
   const maxUnitsPerLine = depth === 0 ? 20 : 18;
-  const lines = Math.min(3, Math.max(1, Math.ceil(units / maxUnitsPerLine)));
+  const lines = Math.min(2, Math.max(1, Math.ceil(units / maxUnitsPerLine)));
   const hasFooter = Boolean(node.tag?.trim()) || node.resources.length > 0;
-  const hasDesc = Boolean(node.description?.trim());
-  const height = 22 + lines * 18 + (hasDesc ? 16 : 0) + (hasFooter ? 22 : 4);
-  return { width, height: Math.max(54, Math.min(128, height)) };
+  const height = 20 + lines * 18 + (hasFooter ? 20 : 4);
+  return { width, height: Math.max(46, Math.min(100, height)) };
 }
 
 interface MeasureTree {

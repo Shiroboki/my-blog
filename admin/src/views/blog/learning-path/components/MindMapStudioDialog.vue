@@ -152,9 +152,6 @@
                 >
                   <span class="node-accent" />
                   <div class="node-title">{{ item.node.label }}</div>
-                  <div v-if="item.node.description" class="node-desc">
-                    {{ item.node.description }}
-                  </div>
                   <div v-if="item.node.tag || item.node.resources.length" class="node-badges">
                     <span v-if="item.node.tag" class="mini-tag">{{ item.node.tag }}</span>
                     <span v-if="item.resourceCounts.article" class="res-badge is-article">
@@ -848,12 +845,17 @@ async function handleSubmit() {
 .canvas-world {
   position: relative;
   transform-origin: 0 0;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .edge-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
+
+  path {
+    transition: d 0.28s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.2s ease;
+  }
 }
 
 .studio-node {
@@ -864,7 +866,12 @@ async function handleSubmit() {
   border: 1.5px solid var(--el-border-color);
   background: var(--el-bg-color);
   cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition:
+    left 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    top 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
   overflow: hidden;
 
@@ -903,16 +910,6 @@ async function handleSubmit() {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.node-desc {
-  margin-top: 3px;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .node-badges {

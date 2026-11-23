@@ -4,15 +4,7 @@
     <header class="card archives-header animate-rise">
       <div class="archives-head-top">
         <div class="head-title-block">
-          <div class="archives-eyebrow">TIMELINE ARCHIVES</div>
-          <div class="heading-line">
-            <h1 class="page-heading">文章归档</h1>
-            <span class="archive-stat-badge">
-              {{ visibleArticleCount }}<template v-if="isFiltered"> / {{ totalArticles }}</template> 篇
-              · {{ filteredGroups.length }} 个节点
-            </span>
-          </div>
-          <p class="page-sub">按时间轴脉络回溯技术沉淀与随笔记录，点击左侧刻度可快速定位年月</p>
+          <h1 class="page-heading">文章归档</h1>
         </div>
 
         <div class="archive-filter-bar">
@@ -103,11 +95,6 @@
       <!-- 左侧时间轴导览轨 -->
       <aside class="rail-aside" aria-label="归档时间轴导航">
         <div class="card rail-card">
-          <div class="rail-header">
-            <span class="rail-title">时间刻度</span>
-            <span class="rail-range">{{ timelineRangeLabel }}</span>
-          </div>
-
           <div ref="railListRef" class="rail-timeline">
             <!-- 贯穿轨道底层细线 + 随进度滑动的渐变高亮线 -->
             <div class="rail-track" aria-hidden="true">
@@ -199,12 +186,9 @@
                   <span class="milestone-core" />
                 </span>
 
-                <div class="milestone-label-wrap">
-                  <span class="milestone-ym">{{ formatYearMonthLabel(group.yearMonth) }}</span>
-                  <span class="milestone-iso">{{ group.yearMonth }}</span>
-                </div>
+                <span class="milestone-ym">{{ formatYearMonthLabel(group.yearMonth) }}</span>
 
-                <span class="milestone-count">{{ group.articles.length }} 篇</span>
+                <span class="milestone-count">{{ group.articles.length }}</span>
 
                 <svg viewBox="0 0 16 16" class="milestone-chevron" aria-hidden="true">
                   <polyline points="4 6 8 10 12 6" />
@@ -357,10 +341,6 @@ const filteredGroups = computed(() => {
     .filter((group) => group.articles.length > 0);
 });
 
-const visibleArticleCount = computed(() =>
-  filteredGroups.value.reduce((sum, g) => sum + g.articles.length, 0),
-);
-
 const yearSections = computed<YearSection[]>(() => {
   const map = new Map<string, YearSection>();
   for (const g of filteredGroups.value) {
@@ -393,13 +373,6 @@ const maxMonthCount = computed(() => {
 });
 
 const activeYear = computed(() => activeYearMonth.value.split("-")[0] || "");
-
-const timelineRangeLabel = computed(() => {
-  const list = filteredGroups.value;
-  if (!list.length) return "";
-  if (list.length === 1) return list[0].yearMonth;
-  return `${list[list.length - 1].yearMonth} ~ ${list[0].yearMonth}`;
-});
 
 const railProgressHeight = computed(() => {
   if (!indicatorBox.visible) return 0;
@@ -604,59 +577,25 @@ onBeforeUnmount(() => {
 }
 
 .archives-header {
-  padding: 22px 26px 18px;
+  padding: 18px 24px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .archives-head-top {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px 20px;
-}
-
-.archives-eyebrow {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--accent);
-  margin-bottom: 4px;
-}
-
-.heading-line {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  gap: 12px 18px;
 }
 
 .page-heading {
   margin: 0;
-  font-size: 23px;
+  font-size: 21px;
   font-weight: 800;
   letter-spacing: -0.02em;
-}
-
-.archive-stat-badge {
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.page-sub {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-muted);
 }
 
 .archive-filter-bar {

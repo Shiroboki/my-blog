@@ -2,7 +2,6 @@
   <section class="links-wrap">
     <div class="card links-header animate-rise">
       <h1 class="page-heading">友情链接</h1>
-      <p class="page-sub">同路人的技术站点、文档参考与优质博客收藏</p>
     </div>
 
     <div v-if="loading" class="card empty-box">正在加载友链列表...</div>
@@ -33,7 +32,7 @@
             <span class="link-name">{{ link.name }}</span>
             <span class="link-host">{{ extractHost(link.url) }}</span>
           </div>
-          <p class="link-desc">{{ link.description || "点击前往访问该站点" }}</p>
+          <p v-if="link.description" class="link-desc">{{ link.description }}</p>
         </div>
       </a>
     </div>
@@ -94,19 +93,13 @@ onMounted(async () => {
 }
 
 .links-header {
-  padding: 26px 30px;
+  padding: 20px 26px;
 }
 
 .page-heading {
-  margin: 0 0 6px;
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.page-sub {
   margin: 0;
-  font-size: 14px;
-  color: var(--text-muted);
+  font-size: 22px;
+  font-weight: 800;
 }
 
 .empty-box {

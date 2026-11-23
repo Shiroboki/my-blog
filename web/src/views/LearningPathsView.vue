@@ -4,7 +4,6 @@
     <header class="card paths-header animate-rise">
       <div class="header-main-row">
         <div class="header-title-wrap">
-          <span class="paths-eyebrow">ROADMAP</span>
           <h1 class="paths-heading">学习路径</h1>
         </div>
 
@@ -64,22 +63,6 @@
             {{ editMode ? "退出编辑" : "编辑当前导图" }}
           </button>
           <a href="/admin/#/blog/learning-path" class="btn btn-compact">后台管理</a>
-        </div>
-      </div>
-
-      <!-- 次行：路线简介与掌握进度条（极简压缩高度，为思维导图腾出首屏视口） -->
-      <div v-if="currentPath && !editMode" class="header-sub-row">
-        <p class="current-summary">
-          {{ currentPath.summary || "点击任意节点查看或播放挂载的文章、视频教程与网页资料。" }}
-        </p>
-
-        <div v-if="activeTreeStats.nodeCount" class="progress-inline">
-          <span class="progress-text">
-            已掌握 {{ completedCountInCurrent }} / {{ activeTreeStats.nodeCount }}（{{ progressPercent }}%）
-          </span>
-          <div class="progress-mini-track" aria-hidden="true">
-            <div class="progress-mini-fill" :style="{ width: `${progressPercent}%` }" />
-          </div>
         </div>
       </div>
 
@@ -239,8 +222,8 @@
                 <span v-if="selectedNode.tag" class="inspector-tag">{{ selectedNode.tag }}</span>
               </div>
 
-              <p class="inspector-desc">
-                {{ selectedNode.description || "点击下方已挂载的文章、视频或参考网页开始学习。" }}
+              <p v-if="selectedNode.description" class="inspector-desc">
+                {{ selectedNode.description }}
               </p>
 
               <div class="inspector-status-row">
@@ -250,11 +233,16 @@
                   :class="{ 'is-done': completedSetForCurrent.has(selectedNode.id) }"
                   @click="handleToggleComplete(selectedNode.id)"
                 >
-                  {{ completedSetForCurrent.has(selectedNode.id) ? "已掌握（点击取消）" : "标记为已掌握" }}
+                  {{ completedSetForCurrent.has(selectedNode.id) ? "已掌握" : "标记已掌握" }}
                 </button>
-                <span class="res-total-label">
-                  挂载 {{ selectedNode.resources.length }} 项资源
-                </span>
+                <div v-if="activeTreeStats.nodeCount" class="progress-inline">
+                  <span class="progress-text">
+                    {{ completedCountInCurrent }}/{{ activeTreeStats.nodeCount }}
+                  </span>
+                  <div class="progress-mini-track" aria-hidden="true">
+                    <div class="progress-mini-fill" :style="{ width: `${progressPercent}%` }" />
+                  </div>
+                </div>
               </div>
 
               <div v-if="selectedNode.resources.length" class="res-filter-tabs">
@@ -296,7 +284,7 @@
               </div>
 
               <div v-if="!filteredNodeResources.length" class="inspector-empty">
-                该节点暂未挂载{{ resourceFilter === "all" ? "" : resourceTypeLabel(resourceFilter) }}资源，可点击上方「编辑当前导图」添加。
+                暂无{{ resourceFilter === "all" ? "" : resourceTypeLabel(resourceFilter) }}资源
               </div>
 
               <div v-else class="resource-list">

@@ -263,17 +263,7 @@
         </div>
       </div>
 
-      <!-- 左下角操作提示浮标 -->
-      <div class="canvas-hint-hud">
-        <template v-if="editable">
-          <span>双击节点改名 · Tab 加子节点 · Enter 加同级 · Del 删除</span>
-        </template>
-        <template v-else>
-          <span>拖拽平移 · 方向键切换节点 · 滚轮缩放/Ctrl+滚轮</span>
-        </template>
-      </div>
-
-      <!-- 右下角悬浮玻璃控制栏（XMind / Figma 风格） -->
+      <!-- 底部居中悬浮玻璃控制栏 -->
       <div class="canvas-control-hud" @pointerdown.stop>
         <button
           type="button"

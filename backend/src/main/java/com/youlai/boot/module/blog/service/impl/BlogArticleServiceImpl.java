@@ -119,6 +119,7 @@ public class BlogArticleServiceImpl implements BlogArticleService {
         }
         boolean ok = blogArticleMapper.insert(entity) > 0;
         if (ok) {
+            form.setId(entity.getId());
             syncArticleTags(entity.getId(), form.getTagIds());
             evictSiteInfoCache();
         }

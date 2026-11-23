@@ -15,6 +15,7 @@ import com.youlai.boot.module.blog.model.vo.BlogCategoryVO;
 import com.youlai.boot.module.blog.model.vo.BlogCommentVO;
 import com.youlai.boot.module.blog.model.vo.BlogLearningPathVO;
 import com.youlai.boot.module.blog.model.vo.BlogLinkVO;
+import com.youlai.boot.module.blog.model.vo.BlogSearchResultVO;
 import com.youlai.boot.module.blog.model.vo.BlogSiteInfoVO;
 import com.youlai.boot.module.blog.model.vo.BlogTagVO;
 import com.youlai.boot.module.blog.service.BlogArticleService;
@@ -24,6 +25,7 @@ import com.youlai.boot.module.blog.service.BlogConfigService;
 import com.youlai.boot.module.blog.service.BlogDashboardService;
 import com.youlai.boot.module.blog.service.BlogLearningPathService;
 import com.youlai.boot.module.blog.service.BlogLinkService;
+import com.youlai.boot.module.blog.service.BlogSearchService;
 import com.youlai.boot.module.blog.service.BlogTagService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -53,6 +55,7 @@ public class BlogPublicController {
     private final BlogCommentService blogCommentService;
     private final BlogLinkService blogLinkService;
     private final BlogLearningPathService blogLearningPathService;
+    private final BlogSearchService blogSearchService;
     private final BlogDashboardService blogDashboardService;
 
     @Operation(summary = "获取博客站点信息与统计")
@@ -141,6 +144,15 @@ public class BlogPublicController {
             @Parameter(description = "路径ID或URL别名") @PathVariable String idOrSlug
     ) {
         return Result.success(blogLearningPathService.getPublicPath(idOrSlug));
+    }
+
+    @Operation(summary = "全局聚合检索（文章正文片段、学习路径节点、归档年月）")
+    @GetMapping("/search")
+    public Result<BlogSearchResultVO> searchPublic(
+            @Parameter(description = "搜索关键字") @RequestParam(defaultValue = "") String q,
+            @Parameter(description = "每类最大返回数") @RequestParam(defaultValue = "8") int limit
+    ) {
+        return Result.success(blogSearchService.searchPublic(q, limit));
     }
 
     @Operation(summary = "RSS 2.0 订阅源")

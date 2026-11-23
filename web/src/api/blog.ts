@@ -176,6 +176,35 @@ export interface BlogArchiveGroup {
   }[];
 }
 
+export interface BlogSearchArticleHit {
+  id: string;
+  slug?: string;
+  title: string;
+  categoryName?: string;
+  publishTime?: string;
+  snippet?: string;
+}
+
+export interface BlogSearchPathHit {
+  id: string;
+  slug?: string;
+  title: string;
+  summary?: string;
+  matchedNodeId?: string;
+  matchedNodeLabel?: string;
+}
+
+export interface BlogSearchArchiveHit {
+  yearMonth: string;
+  count: number;
+}
+
+export interface BlogSearchResult {
+  articles: BlogSearchArticleHit[];
+  paths: BlogSearchPathHit[];
+  archives: BlogSearchArchiveHit[];
+}
+
 export interface PageResult<T> {
   list: T[];
   total: number;
@@ -243,6 +272,9 @@ export const blogApi = {
   },
   getLearningPath(idOrSlug: string): Promise<BlogLearningPathItem> {
     return http.get(`/learning-paths/${encodeURIComponent(idOrSlug)}`);
+  },
+  searchPublic(q: string, limit = 8): Promise<BlogSearchResult> {
+    return http.get("/search", { params: { q, limit } });
   },
 };
 

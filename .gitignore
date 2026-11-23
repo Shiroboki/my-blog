@@ -7,4 +7,5 @@ web/node_modules/
 web/dist/
 *.log
 logs/
+backups/
 .DS_Store

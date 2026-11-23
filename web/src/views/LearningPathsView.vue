@@ -1,7 +1,7 @@
 <template>
   <section class="paths-page">
     <!-- 紧凑整合式顶部导览栏：路径切换、进度、搜索与创建/编辑入口统一在单卡片内 -->
-    <header class="card paths-header animate-rise">
+    <header class="card paths-header" :class="{ 'animate-rise': !hydratedFromCache }">
       <div class="header-main-row">
         <div class="header-title-wrap">
           <h1 class="paths-heading">学习路径</h1>
@@ -102,6 +102,27 @@
         >
           {{ showAdvancedMeta ? "收起简介/别名" : "简介与别名" }}
         </button>
+
+        <div class="strip-history-group">
+          <button
+            type="button"
+            class="strip-history-btn"
+            :disabled="!undoStack.length"
+            title="撤销上一步修改 (Ctrl+Z)"
+            @click="undoTree"
+          >
+            撤销
+          </button>
+          <button
+            type="button"
+            class="strip-history-btn"
+            :disabled="!redoStack.length"
+            title="重做修改 (Ctrl+Shift+Z / Ctrl+Y)"
+            @click="redoTree"
+          >
+            重做
+          </button>
+        </div>
 
         <div class="strip-save-group">
           <button
@@ -671,6 +692,7 @@ import {
   type BlogLearningPathItem,
 } from "@/api/blog";
 import MindMapCanvas from "@/components/MindMapCanvas.vue";
+import { ensureLearningPaths, peekCachedLearningPaths } from "@/composables/useRouteFlow";
 import { useSiteInfo } from "@/composables/useSiteInfo";
 import {
   addChildNode,
@@ -722,6 +744,11 @@ const editMode = ref(false);
 const showAdvancedMeta = ref(false);
 const inspectorCollapsed = ref(false);
 const statusNotice = ref("");
+const undoStack = ref<string[]>([]);
+const redoStack = ref<string[]>([]);
+let lastTreeSnapshot = "";
+let applyingHistory = false;
+let lastHistoryPushAt = 0;
 const nodeSearchQuery = ref("");
 const resourceFilter = ref<"all" | MindMapResourceType>("all");
 const activePreviewResId = ref<string | null>(null);
@@ -861,16 +888,111 @@ function persistProgressMap() {
   }
 }
 
-function activatePath(entry: PathCollectionEntry | null) {
+function expandAncestorsForNode(root: MindMapNode, targetId: string): MindMapNode {
+  const chain = findNodeChain(root, targetId);
+  if (chain.length <= 1) return root;
+  const ancestorIds = new Set(chain.slice(0, -1).map((item) => item.id));
+  function walk(node: MindMapNode): MindMapNode {
+    const nextChildren = node.children.map((child) => walk(child));
+    return {
+      ...node,
+      collapsed: ancestorIds.has(node.id) ? false : node.collapsed,
+      children: nextChildren,
+    };
+  }
+  return walk(root);
+}
+
+function resetHistoryBaseline() {
+  undoStack.value = [];
+  redoStack.value = [];
+  lastHistoryPushAt = 0;
+  lastTreeSnapshot = workingTree.value ? JSON.stringify(workingTree.value) : "";
+}
+
+function focusNodeInCurrentTree(nodeId?: string) {
+  if (!workingTree.value || !nodeId) return;
+  if (!findNodeById(workingTree.value, nodeId)) return;
+  applyingHistory = true;
+  try {
+    workingTree.value = expandAncestorsForNode(workingTree.value, nodeId);
+    selectedNodeId.value = nodeId;
+    lastTreeSnapshot = JSON.stringify(workingTree.value);
+  } finally {
+    applyingHistory = false;
+  }
+  void nextTick(() => canvasRef.value?.fitToView());
+}
+
+function undoTree() {
+  if (!editMode.value || !undoStack.value.length || !workingTree.value) return;
+  const prevJson = undoStack.value[undoStack.value.length - 1];
+  undoStack.value = undoStack.value.slice(0, -1);
+  redoStack.value = [...redoStack.value, JSON.stringify(workingTree.value)];
+  applyingHistory = true;
+  try {
+    const restored = parseMindMapTree(prevJson, draftMeta.title);
+    workingTree.value = restored;
+    lastTreeSnapshot = JSON.stringify(restored);
+    if (!findNodeById(restored, selectedNodeId.value)) {
+      selectedNodeId.value = restored.id;
+    }
+  } finally {
+    applyingHistory = false;
+  }
+  statusNotice.value = "已撤销上一步导图修改";
+}
+
+function redoTree() {
+  if (!editMode.value || !redoStack.value.length || !workingTree.value) return;
+  const nextJson = redoStack.value[redoStack.value.length - 1];
+  redoStack.value = redoStack.value.slice(0, -1);
+  undoStack.value = [...undoStack.value.slice(-39), JSON.stringify(workingTree.value)];
+  applyingHistory = true;
+  try {
+    const restored = parseMindMapTree(nextJson, draftMeta.title);
+    workingTree.value = restored;
+    lastTreeSnapshot = JSON.stringify(restored);
+    if (!findNodeById(restored, selectedNodeId.value)) {
+      selectedNodeId.value = restored.id;
+    }
+  } finally {
+    applyingHistory = false;
+  }
+  statusNotice.value = "已重做上一步导图修改";
+}
+
+function activatePath(entry: PathCollectionEntry | null, preferredNodeId?: string) {
   if (!entry) {
-    workingTree.value = null;
-    selectedNodeId.value = "";
+    applyingHistory = true;
+    try {
+      workingTree.value = null;
+      selectedNodeId.value = "";
+      resetHistoryBaseline();
+    } finally {
+      applyingHistory = false;
+    }
     return;
   }
   selectedPathUid.value = entry.uid;
   const parsed = parseMindMapTree(entry.treeJson, entry.title);
-  workingTree.value = parsed;
-  selectedNodeId.value = parsed.id;
+  const queryNodeId =
+    preferredNodeId || (typeof route.query.node === "string" ? route.query.node.trim() : "");
+  const hasTargetNode = Boolean(queryNodeId && findNodeById(parsed, queryNodeId));
+
+  applyingHistory = true;
+  try {
+    workingTree.value = hasTargetNode ? expandAncestorsForNode(parsed, queryNodeId) : parsed;
+    selectedNodeId.value = hasTargetNode ? queryNodeId : parsed.id;
+    resetHistoryBaseline();
+  } finally {
+    applyingHistory = false;
+  }
+
+  if (hasTargetNode) {
+    void nextTick(() => canvasRef.value?.fitToView());
+  }
+
   draftMeta.title = entry.title;
   draftMeta.slug = entry.slug || "";
   draftMeta.summary = entry.summary || "";
@@ -962,6 +1084,7 @@ function startCreateNewPath() {
   persistLocalPaths();
   activatePath(entry);
   editMode.value = true;
+  resetHistoryBaseline();
 }
 
 function toggleEditMode() {
@@ -970,6 +1093,7 @@ function toggleEditMode() {
   showAdvancedMeta.value = false;
   if (editMode.value) {
     editMode.value = false;
+    resetHistoryBaseline();
     if (currentPath.value) {
       activatePath(currentPath.value);
     }
@@ -981,11 +1105,17 @@ function toggleEditMode() {
     draftMeta.slug = currentPath.value.slug || "";
     draftMeta.summary = currentPath.value.summary || "";
     draftMeta.coverColor = currentPath.value.coverColor || "#0d9488";
-    workingTree.value = cloneMindMapTree(
-      parseMindMapTree(currentPath.value.treeJson, currentPath.value.title),
-    );
+    applyingHistory = true;
+    try {
+      workingTree.value = cloneMindMapTree(
+        parseMindMapTree(currentPath.value.treeJson, currentPath.value.title),
+      );
+    } finally {
+      applyingHistory = false;
+    }
   }
   editMode.value = true;
+  resetHistoryBaseline();
 }
 
 function handleAddChildNode(parentId: string) {
@@ -1319,31 +1449,95 @@ function lookupArticleSummary(res: MindMapResource): string {
   return matched?.summary || "";
 }
 
+const initialCachedBundle = peekCachedLearningPaths();
+const hydratedFromCache = Boolean(initialCachedBundle?.paths.length);
+
 async function loadLearningPaths(preferredIdOrSlug?: string) {
-  loading.value = true;
+  if (!allPaths.value.length) {
+    loading.value = true;
+  }
   try {
-    const [pathsRes, articlesRes] = await Promise.all([
-      blogApi.getLearningPaths(),
-      blogApi.getArticles({ pageNum: 1, pageSize: 100 }),
-    ]);
+    const { paths: pathsRes, articles: articlesRes } = await ensureLearningPaths(true);
+    const prevSelectedUid = selectedPathUid.value;
     serverPaths.value = (pathsRes || []).map((item) => ({
       ...item,
       uid: `srv-${item.id}`,
       source: "server" as const,
     }));
-    articleCatalog.value = articlesRes?.list ?? [];
+    articleCatalog.value = articlesRes ?? [];
+
+    if (editMode.value && prevSelectedUid) {
+      return;
+    }
 
     const routeKey =
       preferredIdOrSlug || (typeof route.params.idOrSlug === "string" ? route.params.idOrSlug : "");
     let matched: PathCollectionEntry | undefined;
     if (routeKey) {
       matched = allPaths.value.find((p) => p.id === routeKey || p.slug === routeKey);
+    } else if (prevSelectedUid) {
+      matched = allPaths.value.find((p) => p.uid === prevSelectedUid);
     }
-    activatePath(matched ?? allPaths.value[0] ?? null);
+    const targetEntry = matched ?? allPaths.value[0] ?? null;
+    if (!targetEntry || targetEntry.uid !== prevSelectedUid || !workingTree.value) {
+      activatePath(targetEntry);
+    }
   } finally {
     loading.value = false;
   }
 }
+
+if (initialCachedBundle) {
+  serverPaths.value = initialCachedBundle.paths.map((item) => ({
+    ...item,
+    uid: `srv-${item.id}`,
+    source: "server" as const,
+  }));
+  articleCatalog.value = initialCachedBundle.articles;
+  const initRouteKey = typeof route.params.idOrSlug === "string" ? route.params.idOrSlug : "";
+  const initMatched = initRouteKey
+    ? allPaths.value.find((p) => p.id === initRouteKey || p.slug === initRouteKey)
+    : undefined;
+  activatePath(initMatched ?? allPaths.value[0] ?? null);
+}
+
+watch(
+  workingTree,
+  (nextTree, prevTree) => {
+    if (applyingHistory || !editMode.value || !nextTree) {
+      lastTreeSnapshot = nextTree ? JSON.stringify(nextTree) : "";
+      return;
+    }
+    const nextJson = JSON.stringify(nextTree);
+    if (nextJson === lastTreeSnapshot) {
+      return;
+    }
+    const activeEl = document.activeElement as HTMLElement | null;
+    const editingInspectorField = Boolean(
+      activeEl?.closest(".inspector-col") &&
+        (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA"),
+    );
+    const now = Date.now();
+    const prevStats = prevTree ? countTreeStats(prevTree) : null;
+    const nextStats = countTreeStats(nextTree);
+    const sameShape =
+      prevStats &&
+      prevStats.nodeCount === nextStats.nodeCount &&
+      prevStats.resourceCount === nextStats.resourceCount;
+
+    if (editingInspectorField && sameShape && undoStack.value.length > 0 && now - lastHistoryPushAt < 650) {
+      lastTreeSnapshot = nextJson;
+      return;
+    }
+    if (lastTreeSnapshot) {
+      undoStack.value = [...undoStack.value.slice(-39), lastTreeSnapshot];
+      redoStack.value = [];
+      lastHistoryPushAt = now;
+    }
+    lastTreeSnapshot = nextJson;
+  },
+  { flush: "sync" },
+);
 
 watch(
   () => route.params.idOrSlug,
@@ -1356,14 +1550,43 @@ watch(
   },
 );
 
+watch(
+  () => route.query.node,
+  (nextNodeId) => {
+    if (typeof nextNodeId === "string" && nextNodeId.trim()) {
+      focusNodeInCurrentTree(nextNodeId.trim());
+    }
+  },
+);
+
+function handleHistoryShortcuts(e: KeyboardEvent) {
+  if (!editMode.value) return;
+  const target = e.target as HTMLElement | null;
+  if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
+    return;
+  }
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod) return;
+  const key = e.key.toLowerCase();
+  if (key === "z" && !e.shiftKey) {
+    e.preventDefault();
+    undoTree();
+  } else if ((key === "z" && e.shiftKey) || key === "y") {
+    e.preventDefault();
+    redoTree();
+  }
+}
+
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalEsc);
+  window.addEventListener("keydown", handleHistoryShortcuts);
   void loadSiteInfo();
   void loadLearningPaths();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleGlobalEsc);
+  window.removeEventListener("keydown", handleHistoryShortcuts);
 });
 </script>
 
@@ -1663,6 +1886,35 @@ html.dark .path-source-badge {
 .strip-more-btn:hover {
   background: var(--bg-subtle);
   color: var(--accent);
+}
+
+.strip-history-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.strip-history-btn {
+  border: none;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.strip-history-btn:hover:not(:disabled) {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.strip-history-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .strip-save-group {
@@ -2353,6 +2605,41 @@ html.dark .res-primary-btn {
 
   .header-right-actions {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .paths-header {
+    padding: 12px 14px;
+  }
+
+  .header-main-row {
+    gap: 8px;
+  }
+
+  .header-right-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .strip-field--title,
+  .strip-field--summary {
+    flex: 1 1 100%;
+  }
+
+  .strip-input {
+    min-width: 0;
+  }
+
+  .strip-save-group {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .inspector-col {
+    padding: 14px;
   }
 }
 </style>

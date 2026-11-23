@@ -4,8 +4,10 @@ import cn.binarywang.wx.miniapp.api.WxMaService;
 import cn.hutool.core.util.ArrayUtil;
 import com.youlai.boot.auth.password.service.CaptchaService;
 import com.youlai.boot.framework.security.config.SecurityProperties;
+import com.youlai.boot.framework.security.filter.McpTokenAuthenticationFilter;
 import com.youlai.boot.framework.security.handler.JsonAccessDeniedHandler;
 import com.youlai.boot.framework.security.handler.JsonAuthenticationEntryPoint;
+import com.youlai.boot.framework.security.port.McpTokenAuthPort;
 import com.youlai.boot.framework.security.port.UserAuthenticationPort;
 import com.youlai.boot.framework.security.service.SecurityUserDetailsService;
 import com.youlai.boot.framework.security.session.SessionService;
@@ -15,8 +17,10 @@ import com.youlai.boot.auth.wxma.provider.WxMaAuthenticationProvider;
 import com.youlai.boot.auth.wxma.config.WxMaProperties;
 import com.youlai.boot.system.service.UserIdentityService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
@@ -55,8 +59,37 @@ public class SecurityConfig {
     private final SecurityUserDetailsService userDetailsService;
     private final CaptchaService captchaService;
     private final SecurityProperties securityProperties;
+    private final ObjectProvider<McpTokenAuthPort> mcpTokenAuthPortProvider;
 
     @Bean
+    @Order(1)
+    public SecurityFilterChain mcpSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/api/v1/mcp", "/api/v1/mcp/**")
+                .authorizeHttpRequests(registry -> {
+                    registry.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
+                    registry.anyRequest().hasRole("MCP");
+                })
+                .exceptionHandling(configurer ->
+                        configurer
+                                .authenticationEntryPoint(new JsonAuthenticationEntryPoint())
+                                .accessDeniedHandler(new JsonAccessDeniedHandler())
+                )
+                .sessionManagement(configurer ->
+                        configurer.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .csrf(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .addFilterBefore(
+                        new McpTokenAuthenticationFilter(mcpTokenAuthPortProvider),
+                        UsernamePasswordAuthenticationFilter.class
+                );
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(requestMatcherRegistry -> {

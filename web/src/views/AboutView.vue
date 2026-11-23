@@ -1,21 +1,23 @@
 <template>
-  <div class="card about-card animate-rise">
-    <div v-if="siteInfo" class="about-author">
-      <div class="about-avatar-ring">
-        <img
-          v-if="siteInfo.authorAvatar"
-          :src="siteInfo.authorAvatar"
-          :alt="siteInfo.authorName"
-          class="about-avatar"
-        />
+  <section class="about-page">
+    <div class="card about-card" :class="{ 'animate-rise': !hydratedFromCache }">
+      <div v-if="siteInfo" class="about-author">
+        <div class="about-avatar-ring">
+          <img
+            v-if="siteInfo.authorAvatar"
+            :src="siteInfo.authorAvatar"
+            :alt="siteInfo.authorName"
+            class="about-avatar"
+          />
+        </div>
+        <div>
+          <h2 class="about-name">{{ siteInfo.authorName }}</h2>
+          <p class="about-bio">{{ siteInfo.authorBio }}</p>
+        </div>
       </div>
-      <div>
-        <h2 class="about-name">{{ siteInfo.authorName }}</h2>
-        <p class="about-bio">{{ siteInfo.authorBio }}</p>
-      </div>
+      <div class="markdown-body" v-html="rendered.html" />
     </div>
-    <div class="markdown-body" v-html="rendered.html" />
-  </div>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -24,6 +26,7 @@ import { useSiteInfo } from "@/composables/useSiteInfo";
 import { renderMarkdown } from "@/utils/markdown";
 
 const { siteInfo, loadSiteInfo } = useSiteInfo();
+const hydratedFromCache = Boolean(siteInfo.value);
 
 const rendered = computed(() =>
   renderMarkdown(siteInfo.value?.aboutContent || "# 关于本站\n\n暂无介绍内容。"),
@@ -35,6 +38,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.about-page {
+  width: 100%;
+}
+
 .about-card {
   padding: 30px 34px;
 }

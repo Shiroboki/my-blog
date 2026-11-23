@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { getHomeReturnScrollY } from "@/composables/useArticleTransition";
+import { updateRouteFlowOnNavigate } from "@/composables/useRouteFlow";
 import { updatePageSeo } from "@/utils/seo";
 import HomeView from "@/views/HomeView.vue";
 
@@ -23,9 +24,12 @@ const router = createRouter({
     if (to.path.startsWith("/article/")) {
       return { top: 0, behavior: "instant" };
     }
-    if (savedPosition) return savedPosition;
+    if (to.name === "LearningPaths" && from.name === "LearningPaths") {
+      return false;
+    }
+    if (savedPosition) return { ...savedPosition, behavior: "instant" };
     if (to.path === from.path) return false;
-    return { top: 0 };
+    return { top: 0, behavior: "instant" };
   },
   routes: [
     {
@@ -74,6 +78,10 @@ const router = createRouter({
       meta: { title: "页面不存在", description: "访问的页面不存在或内容已下线" },
     },
   ],
+});
+
+router.beforeEach((to, from) => {
+  updateRouteFlowOnNavigate(to, from);
 });
 
 router.afterEach((to) => {

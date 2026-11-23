@@ -8,11 +8,13 @@ import com.youlai.boot.module.blog.enums.CommentStatusEnum;
 import com.youlai.boot.module.blog.mapper.BlogArticleMapper;
 import com.youlai.boot.module.blog.mapper.BlogCategoryMapper;
 import com.youlai.boot.module.blog.mapper.BlogCommentMapper;
+import com.youlai.boot.module.blog.mapper.BlogLearningPathMapper;
 import com.youlai.boot.module.blog.mapper.BlogLinkMapper;
 import com.youlai.boot.module.blog.mapper.BlogTagMapper;
 import com.youlai.boot.module.blog.model.entity.BlogArticle;
 import com.youlai.boot.module.blog.model.entity.BlogCategory;
 import com.youlai.boot.module.blog.model.entity.BlogComment;
+import com.youlai.boot.module.blog.model.entity.BlogLearningPath;
 import com.youlai.boot.module.blog.model.entity.BlogLink;
 import com.youlai.boot.module.blog.model.entity.BlogTag;
 import com.youlai.boot.module.blog.model.form.BlogConfigForm;
@@ -43,6 +45,7 @@ public class BlogDashboardServiceImpl implements BlogDashboardService {
     private final BlogTagMapper blogTagMapper;
     private final BlogCommentMapper blogCommentMapper;
     private final BlogLinkMapper blogLinkMapper;
+    private final BlogLearningPathMapper blogLearningPathMapper;
     private final BlogConfigService blogConfigService;
 
     @Override
@@ -163,6 +166,17 @@ public class BlogDashboardServiceImpl implements BlogDashboardService {
             String lastmod = mod != null ? mod.toLocalDate().toString() : null;
             String articleKey = StrUtil.blankToDefault(StrUtil.trim(article.getSlug()), String.valueOf(article.getId()));
             appendUrlNode(sb, normalizedBase + "/article/" + articleKey, lastmod, "weekly", "0.8");
+        }
+        List<BlogLearningPath> paths = blogLearningPathMapper.selectList(new LambdaQueryWrapper<BlogLearningPath>()
+                .select(BlogLearningPath::getId, BlogLearningPath::getSlug,
+                        BlogLearningPath::getUpdateTime, BlogLearningPath::getCreateTime)
+                .eq(BlogLearningPath::getStatus, 1)
+                .orderByAsc(BlogLearningPath::getSort, BlogLearningPath::getId));
+        for (BlogLearningPath path : paths) {
+            LocalDateTime mod = path.getUpdateTime() != null ? path.getUpdateTime() : path.getCreateTime();
+            String lastmod = mod != null ? mod.toLocalDate().toString() : null;
+            String pathKey = StrUtil.blankToDefault(StrUtil.trim(path.getSlug()), String.valueOf(path.getId()));
+            appendUrlNode(sb, normalizedBase + "/paths/" + pathKey, lastmod, "weekly", "0.7");
         }
         sb.append("</urlset>\n");
         return sb.toString();

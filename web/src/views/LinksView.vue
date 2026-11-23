@@ -1,6 +1,6 @@
 <template>
   <section class="links-wrap">
-    <div class="card links-header animate-rise">
+    <div class="card links-header" :class="{ 'animate-rise': !hydratedFromCache }">
       <h1 class="page-heading">友情链接</h1>
     </div>
 
@@ -41,11 +41,14 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { blogApi, type BlogLinkItem } from "@/api/blog";
+import { type BlogLinkItem } from "@/api/blog";
+import { ensureLinks, peekCachedLinks } from "@/composables/useRouteFlow";
 import { useSiteInfo } from "@/composables/useSiteInfo";
 
 const { loadSiteInfo } = useSiteInfo();
-const links = ref<BlogLinkItem[]>([]);
+const cachedLinks = peekCachedLinks();
+const hydratedFromCache = Boolean(cachedLinks?.length);
+const links = ref<BlogLinkItem[]>(cachedLinks ?? []);
 const loading = ref(false);
 
 const PALETTES = [
@@ -74,9 +77,11 @@ function extractHost(url: string) {
 
 onMounted(async () => {
   void loadSiteInfo();
-  loading.value = true;
+  if (!links.value.length) {
+    loading.value = true;
+  }
   try {
-    links.value = await blogApi.getLinks();
+    links.value = await ensureLinks(true);
   } finally {
     loading.value = false;
   }

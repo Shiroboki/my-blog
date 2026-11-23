@@ -1,7 +1,7 @@
 <template>
   <section class="archives-page">
     <!-- 顶部归档总览与筛选控制栏 -->
-    <header class="card archives-header animate-rise">
+    <header class="card archives-header" :class="{ 'animate-rise': !hydratedFromCache }">
       <div class="archives-head-top">
         <div class="head-title-block">
           <h1 class="page-heading">文章归档</h1>
@@ -250,7 +250,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { blogApi, getArticleRoute, type BlogArchiveGroup } from "@/api/blog";
+import { getArticleRoute, type BlogArchiveGroup } from "@/api/blog";
+import { ensureArchives, peekCachedArchives } from "@/composables/useRouteFlow";
 import { useSiteInfo } from "@/composables/useSiteInfo";
 import { updatePageSeo } from "@/utils/seo";
 
@@ -266,8 +267,10 @@ interface YearSection {
 
 const { loadSiteInfo } = useSiteInfo();
 
+const cachedArchives = peekCachedArchives();
+const hydratedFromCache = Boolean(cachedArchives?.length);
 const loading = ref(false);
-const groups = ref<BlogArchiveGroup[]>([]);
+const groups = ref<BlogArchiveGroup[]>(cachedArchives ?? []);
 const keyword = ref("");
 const selectedCategory = ref("");
 const activeYearMonth = ref("");
@@ -547,10 +550,12 @@ onMounted(async () => {
     type: "website",
   });
 
-  loading.value = true;
+  if (!groups.value.length) {
+    loading.value = true;
+  }
   try {
-    groups.value = await blogApi.getArchives();
-    if (groups.value.length) {
+    groups.value = await ensureArchives(true);
+    if (groups.value.length && !activeYearMonth.value) {
       activeYearMonth.value = groups.value[0].yearMonth;
       await nextTick();
       syncRailIndicator();
@@ -1380,12 +1385,12 @@ onBeforeUnmount(() => {
 
   .rail-aside {
     position: sticky;
-    top: 72px;
+    top: 64px;
     z-index: 8;
   }
 
   .rail-card {
-    padding: 12px 14px;
+    padding: 10px 12px;
   }
 
   .rail-header,
@@ -1425,15 +1430,37 @@ onBeforeUnmount(() => {
   }
 
   .stream-card {
-    padding: 20px 16px;
+    padding: 18px 14px;
+  }
+
+  .timeline-stream {
+    padding-left: 20px;
+  }
+
+  .archive-list {
+    padding-left: 24px;
+  }
+
+  .archive-entry-card {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 9px 11px;
   }
 
   .archive-search-input {
-    width: 160px;
+    width: 150px;
   }
 
   .archive-search-input:focus {
-    width: 190px;
+    width: 180px;
+  }
+}
+
+@media (max-width: 480px) {
+  .archive-search-input,
+  .archive-search-input:focus {
+    width: 100%;
+    min-width: 0;
   }
 }
 

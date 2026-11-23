@@ -100,6 +100,12 @@ public class BlogConfigServiceImpl implements BlogConfigService {
     }
 
     @Override
+    public void setConfigValue(String key, String value, String desc) {
+        upsertConfig(key, value, desc);
+        evictSiteInfoCache();
+    }
+
+    @Override
     public BlogSiteInfoVO getSiteInfo() {
         try {
             String cached = stringRedisTemplate.opsForValue().get(RedisConstants.Blog.SITE_INFO);

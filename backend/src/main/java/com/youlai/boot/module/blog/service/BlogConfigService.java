@@ -14,6 +14,8 @@ public interface BlogConfigService {
 
     String getConfigValue(String key, String defaultValue);
 
+    void setConfigValue(String key, String value, String desc);
+
     BlogSiteInfoVO getSiteInfo();
 
     void evictSiteInfoCache();

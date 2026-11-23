@@ -444,7 +444,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import {
   blogApi,
   getArticleRoute,
@@ -831,7 +831,9 @@ onMounted(async () => {
   void import("@/views/ArticleDetailView.vue");
 
   if (initialSnapshot) {
-    window.scrollTo({ top: initialSnapshot.scrollY, behavior: "instant" });
+    if (initialSnapshot.scrollY > 0) {
+      window.scrollTo({ top: initialSnapshot.scrollY, behavior: "instant" });
+    }
     await nextTick();
     launchLeaveMorph(resolveMorphReturnCard);
 
@@ -854,6 +856,19 @@ onMounted(async () => {
   categories.value = catList;
   tags.value = tagList;
   await fetchArticles();
+});
+
+onBeforeRouteLeave((to) => {
+  if (!to.path.startsWith("/article/") && articles.value.length > 0) {
+    saveHomeSnapshot({
+      queryKey: route.fullPath,
+      articles: articles.value,
+      total: total.value,
+      categories: categories.value,
+      tags: tags.value,
+      scrollY: 0,
+    });
+  }
 });
 
 onUnmounted(() => {
@@ -1941,6 +1956,12 @@ html.dark .search-capsule.is-expanded .search-circle-btn {
     align-items: flex-start;
     gap: 14px;
     padding-bottom: 18px;
+  }
+
+  .masthead-left {
+    flex: 0 0 auto;
+    width: 100%;
+    align-items: flex-start;
   }
 
   .masthead-right {

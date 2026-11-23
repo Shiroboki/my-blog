@@ -291,6 +291,7 @@ class BlogServiceTest {
                 blogTagMapper,
                 blogCommentMapper,
                 blogLinkMapper,
+                blogLearningPathMapper,
                 blogConfigService
         );
         BlogConfigForm config = new BlogConfigForm();

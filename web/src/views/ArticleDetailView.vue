@@ -2308,11 +2308,16 @@ html.dark .mono-circle-btn.is-active {
 
 @media (max-width: 640px) {
   .article-sheet {
-    padding: 22px 20px 26px;
+    padding: 18px 15px 24px;
+  }
+
+  .sheet-title {
+    font-size: 24px;
+    line-height: 1.3;
   }
 
   .comment-section {
-    padding: 20px;
+    padding: 18px 15px;
   }
 
   .neighbor-nav {

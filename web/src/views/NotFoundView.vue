@@ -1,18 +1,24 @@
 <template>
-  <section class="card not-found-card animate-rise">
-    <span class="not-found-code">404</span>
-    <h1 class="not-found-title">页面不存在或内容已下线</h1>
-    <p class="not-found-desc">
-      你访问的地址可能已变更或暂未公开发布，可以从首页或文章归档继续浏览。
-    </p>
-    <div class="not-found-actions">
-      <RouterLink to="/" class="btn btn-primary">返回首页</RouterLink>
-      <RouterLink to="/archives" class="btn">浏览文章归档</RouterLink>
-    </div>
-  </section>
+  <div class="not-found-page">
+    <section class="card not-found-card animate-rise">
+      <span class="not-found-code">404</span>
+      <h1 class="not-found-title">页面不存在或内容已下线</h1>
+      <p class="not-found-desc">
+        你访问的地址可能已变更或暂未公开发布，可以从首页或文章归档继续浏览。
+      </p>
+      <div class="not-found-actions">
+        <RouterLink to="/" class="btn btn-primary">返回首页</RouterLink>
+        <RouterLink to="/archives" class="btn">浏览文章归档</RouterLink>
+      </div>
+    </section>
+  </div>
 </template>
 
 <style scoped>
+.not-found-page {
+  width: 100%;
+}
+
 .not-found-card {
   max-width: 640px;
   margin: 40px auto;

@@ -241,3 +241,49 @@ export interface BlogLearningPathForm {
   status: number;
 }
 
+export interface BlogMcpTokenItem {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  scopes: string;
+  status: number;
+  expireTime?: string;
+  lastUsedTime?: string;
+  callCount: number;
+  remark?: string;
+  createTime?: string;
+}
+
+export interface BlogMcpToolDescriptor {
+  name: string;
+  scope: string;
+  category: string;
+  description: string;
+}
+
+export interface BlogMcpOverview {
+  mcpEnabled: boolean;
+  allowPublish: boolean;
+  endpointPath: string;
+  bootstrapConfigured: boolean;
+  tools: BlogMcpToolDescriptor[];
+  tokens: BlogMcpTokenItem[];
+}
+
+export interface BlogMcpTokenCreateForm {
+  name: string;
+  scopes: string;
+  expireDays?: number;
+  remark?: string;
+}
+
+export interface BlogMcpCreatedToken {
+  token: BlogMcpTokenItem;
+  plainToken: string;
+}
+
+export interface BlogMcpSettingsForm {
+  mcpEnabled?: boolean;
+  allowPublish?: boolean;
+}
+

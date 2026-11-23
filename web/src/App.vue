@@ -57,12 +57,82 @@
             </div>
           </RouterLink>
 
-          <nav class="nav-links">
-            <RouterLink to="/" class="nav-pill" active-class="active">首页</RouterLink>
-            <RouterLink to="/archives" class="nav-pill" active-class="active">归档</RouterLink>
-            <RouterLink to="/paths" class="nav-pill" active-class="active">学习路径</RouterLink>
-            <RouterLink to="/links" class="nav-pill" active-class="active">友链</RouterLink>
-            <RouterLink to="/about" class="nav-pill" active-class="active">关于</RouterLink>
+          <nav ref="navLinksRef" class="nav-links">
+            <span
+              class="nav-active-glider"
+              :class="{ 'is-ready': navGlider.visible, 'is-instant': !navGlider.animated }"
+              :style="{
+                transform: `translate3d(${navGlider.left}px, ${navGlider.top}px, 0)`,
+                width: `${navGlider.width}px`,
+                height: `${navGlider.height}px`,
+              }"
+              aria-hidden="true"
+            />
+            <RouterLink
+              :ref="(el) => setNavTabRef('Home', el)"
+              to="/"
+              class="nav-pill nav-pill--tab"
+              :class="{ active: activeNavTab === 'Home' }"
+              @mouseenter="prefetchNavTarget('Home')"
+              @focus="prefetchNavTarget('Home')"
+            >
+              首页
+            </RouterLink>
+            <RouterLink
+              :ref="(el) => setNavTabRef('Archives', el)"
+              to="/archives"
+              class="nav-pill nav-pill--tab"
+              :class="{ active: activeNavTab === 'Archives' }"
+              @mouseenter="prefetchNavTarget('Archives')"
+              @focus="prefetchNavTarget('Archives')"
+            >
+              归档
+            </RouterLink>
+            <RouterLink
+              :ref="(el) => setNavTabRef('LearningPaths', el)"
+              to="/paths"
+              class="nav-pill nav-pill--tab"
+              :class="{ active: activeNavTab === 'LearningPaths' }"
+              @mouseenter="prefetchNavTarget('LearningPaths')"
+              @focus="prefetchNavTarget('LearningPaths')"
+            >
+              学习路径
+            </RouterLink>
+            <RouterLink
+              :ref="(el) => setNavTabRef('Links', el)"
+              to="/links"
+              class="nav-pill nav-pill--tab"
+              :class="{ active: activeNavTab === 'Links' }"
+              @mouseenter="prefetchNavTarget('Links')"
+              @focus="prefetchNavTarget('Links')"
+            >
+              友链
+            </RouterLink>
+            <RouterLink
+              :ref="(el) => setNavTabRef('About', el)"
+              to="/about"
+              class="nav-pill nav-pill--tab"
+              :class="{ active: activeNavTab === 'About' }"
+              @mouseenter="prefetchNavTarget('About')"
+              @focus="prefetchNavTarget('About')"
+            >
+              关于
+            </RouterLink>
+            <button
+              ref="searchTriggerRef"
+              type="button"
+              class="nav-pill nav-search-btn"
+              :class="{ 'is-morph-hidden': searchMorphHidden }"
+              title="全站快捷搜索 (Ctrl+K / Cmd+K)"
+              @click="cmdOpen = true"
+            >
+              <svg class="nav-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" />
+              </svg>
+              <span>搜索</span>
+              <kbd class="nav-search-kbd">⌘K</kbd>
+            </button>
             <a href="/admin/" class="nav-pill nav-pill--admin">后台管理</a>
           </nav>
         </div>
@@ -75,8 +145,38 @@
     <!-- 文章卡片 <-> 详情页双向容器展开/归位无缝动画层 -->
     <ArticleMorphLayer />
 
+    <!-- Cmd / Ctrl + K 全局快捷搜索面板（支持从导航搜索胶囊原位展开与归位无缝动画） -->
+    <CommandPaletteModal
+      v-model="cmdOpen"
+      :trigger-el="searchTriggerRef"
+      @origin-hidden="searchMorphHidden = $event"
+    />
+
     <main class="container main-content">
-      <RouterView />
+      <div
+        class="route-stage"
+        :class="{ 'is-stage-transitioning': isStageTransitioning }"
+        :style="stageMinHeight ? { minHeight: stageMinHeight } : undefined"
+      >
+        <RouterView v-slot="{ Component, route: viewRoute }">
+          <Transition
+            :name="routeTransitionName"
+            type="transition"
+            :css="!shouldSkipRouteFade"
+            @before-leave="onRouteBeforeLeave"
+            @enter="onRouteEnter"
+            @after-enter="onRouteAfterEnter"
+            @enter-cancelled="onRouteEnterCancelled"
+            @after-leave="onRouteAfterLeave"
+            @leave-cancelled="onRouteLeaveCancelled"
+          >
+            <component
+              :is="Component"
+              :key="getRouteViewKey(viewRoute)"
+            />
+          </Transition>
+        </RouterView>
+      </div>
     </main>
 
     <footer class="container footer-wrap">
@@ -121,23 +221,149 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+  type ComponentPublicInstance,
+} from "vue";
 import { useRoute } from "vue-router";
 import ArticleMorphLayer from "@/components/ArticleMorphLayer.vue";
+import CommandPaletteModal from "@/components/CommandPaletteModal.vue";
 import LampPullSwitch from "@/components/LampPullSwitch.vue";
+import { prefersReducedMotion, useArticleTransition } from "@/composables/useArticleTransition";
 import { useNavbarArticle } from "@/composables/useNavbarArticle";
+import {
+  consumeLeavingScrollY,
+  getRouteViewKey,
+  prefetchNavTarget,
+  scheduleIdleRoutePrefetch,
+  useRouteFlow,
+} from "@/composables/useRouteFlow";
 import { useSiteInfo } from "@/composables/useSiteInfo";
 
 const route = useRoute();
 const { siteInfo, loadSiteInfo } = useSiteInfo();
 const { navbarArticle } = useNavbarArticle();
+const { shouldSkipRouteFade } = useArticleTransition();
+const { routeTransitionName } = useRouteFlow();
 const isArticleRoute = computed(() => route.name === "ArticleDetail");
 const isDark = ref(localStorage.getItem("myblog_theme") === "dark");
+const cmdOpen = ref(false);
+const searchTriggerRef = ref<HTMLElement | null>(null);
+const searchMorphHidden = ref(false);
 const scrollProgress = ref(0);
 const isScrolled = ref(false);
 const inhaleBurst = ref(false);
 const ringCircumference = 2 * Math.PI * 16;
 let inhaleTimer: number | null = null;
+
+const navLinksRef = ref<HTMLElement | null>(null);
+const navTabEls = new Map<string, HTMLElement>();
+const navGlider = reactive({
+  left: 0,
+  top: 0,
+  width: 0,
+  height: 0,
+  visible: false,
+  animated: false,
+});
+let navResizeObserver: ResizeObserver | null = null;
+
+const activeNavTab = computed(() => {
+  const name = route.name;
+  if (
+    name === "Home" ||
+    name === "Archives" ||
+    name === "LearningPaths" ||
+    name === "Links" ||
+    name === "About"
+  ) {
+    return name;
+  }
+  return null;
+});
+
+function setNavTabRef(key: string, el: Element | ComponentPublicInstance | null) {
+  const htmlEl = el && "$el" in el ? ((el.$el as HTMLElement) || null) : ((el as HTMLElement) || null);
+  if (htmlEl) {
+    navTabEls.set(key, htmlEl);
+  } else {
+    navTabEls.delete(key);
+  }
+}
+
+function syncNavGlider(animate = true) {
+  const key = activeNavTab.value;
+  const wrap = navLinksRef.value;
+  const tabEl = key ? navTabEls.get(key) : undefined;
+  if (!wrap || !tabEl) {
+    navGlider.visible = false;
+    return;
+  }
+  const wrapRect = wrap.getBoundingClientRect();
+  const tabRect = tabEl.getBoundingClientRect();
+  navGlider.animated = animate && navGlider.visible;
+  navGlider.left = Math.round((tabRect.left - wrapRect.left) * 10) / 10;
+  navGlider.top = Math.round((tabRect.top - wrapRect.top) * 10) / 10;
+  navGlider.width = Math.round(tabRect.width * 10) / 10;
+  navGlider.height = Math.round(tabRect.height * 10) / 10;
+  navGlider.visible = true;
+}
+
+const isStageTransitioning = ref(false);
+const stageMinHeight = ref("");
+
+function onRouteBeforeLeave(el: Element) {
+  if (shouldSkipRouteFade.value || prefersReducedMotion()) return;
+  const htmlEl = el as HTMLElement;
+  const prevH = htmlEl.getBoundingClientRect().height;
+  const scrollOffset = consumeLeavingScrollY();
+  isStageTransitioning.value = true;
+  if (prevH > 0) {
+    stageMinHeight.value = `${Math.ceil(prevH)}px`;
+  }
+  if (scrollOffset > 1) {
+    htmlEl.style.marginTop = `-${scrollOffset}px`;
+  }
+}
+
+function onRouteEnter(el: Element) {
+  if (shouldSkipRouteFade.value || prefersReducedMotion()) return;
+  const htmlEl = el as HTMLElement;
+  window.requestAnimationFrame(() => {
+    const nextH = htmlEl.getBoundingClientRect().height;
+    if (nextH > 0) {
+      stageMinHeight.value = `${Math.ceil(nextH)}px`;
+    }
+  });
+}
+
+function onRouteAfterEnter() {
+  isStageTransitioning.value = false;
+  stageMinHeight.value = "";
+}
+
+function onRouteEnterCancelled() {
+  isStageTransitioning.value = false;
+  stageMinHeight.value = "";
+}
+
+function onRouteAfterLeave(el: Element) {
+  (el as HTMLElement).style.marginTop = "";
+}
+
+function onRouteLeaveCancelled(el: Element) {
+  (el as HTMLElement).style.marginTop = "";
+}
+
+watch(activeNavTab, () => {
+  void nextTick(() => syncNavGlider(true));
+});
 
 const isArticleAbsorbed = computed(() =>
   Boolean(navbarArticle.value?.absorbed && navbarArticle.value?.title),
@@ -189,19 +415,47 @@ function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function handleCommandShortcut(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    cmdOpen.value = !cmdOpen.value;
+  }
+}
+
 onMounted(() => {
   applyTheme();
   loadSiteInfo();
   window.addEventListener("scroll", handleScroll, { passive: true });
+  window.addEventListener("keydown", handleCommandShortcut);
+  window.addEventListener("resize", handleNavResize, { passive: true });
   handleScroll();
+
+  void nextTick(() => syncNavGlider(false));
+  if (typeof ResizeObserver !== "undefined" && navLinksRef.value) {
+    navResizeObserver = new ResizeObserver(() => {
+      syncNavGlider(false);
+    });
+    navResizeObserver.observe(navLinksRef.value);
+  }
+  void document.fonts?.ready?.then(() => {
+    syncNavGlider(false);
+  });
+  scheduleIdleRoutePrefetch();
 });
 
 onUnmounted(() => {
   window.removeEventListener("scroll", handleScroll);
+  window.removeEventListener("keydown", handleCommandShortcut);
+  window.removeEventListener("resize", handleNavResize);
+  navResizeObserver?.disconnect();
   if (inhaleTimer !== null) {
     window.clearTimeout(inhaleTimer);
   }
 });
+
+function handleNavResize() {
+  syncNavGlider(false);
+}
 </script>
 
 <style scoped>
@@ -498,30 +752,104 @@ html.dark .brand-emblem {
 }
 
 .nav-links {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
 }
 
+.nav-active-glider {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
+    0 4px 12px -6px color-mix(in srgb, var(--accent) 28%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease;
+}
+
+.nav-active-glider.is-ready {
+  opacity: 1;
+}
+
+.nav-active-glider.is-instant {
+  transition: opacity 0.2s ease;
+}
+
 .nav-pill {
+  position: relative;
+  z-index: 1;
   padding: 6px 13px;
   border-radius: 999px;
   font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease;
 }
 
-.nav-pill:hover,
-.nav-pill.active {
+.nav-pill:hover {
   color: var(--accent);
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--bg-subtle) 85%, transparent);
+}
+
+.nav-pill--tab.active {
+  color: var(--accent);
+  background: transparent;
 }
 
 .nav-pill--admin {
-  border: 1px dashed var(--border-subtle);
+  border: none;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.nav-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: var(--bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  cursor: pointer;
+}
+
+.nav-search-btn:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.nav-search-btn.is-morph-hidden {
+  opacity: 0 !important;
+  pointer-events: none;
+  transition: opacity 0.08s linear;
+}
+
+.nav-search-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-search-kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bg-glass-strong);
+  color: var(--text-muted);
 }
 
 .main-content {
@@ -531,6 +859,15 @@ html.dark .brand-emblem {
   width: 100%;
   padding-top: 20px;
   padding-bottom: 44px;
+}
+
+.route-stage {
+  position: relative;
+}
+
+.route-stage.is-stage-transitioning {
+  overflow: clip;
+  transition: min-height 0.36s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .footer-wrap {
@@ -630,23 +967,28 @@ html.dark .brand-emblem {
 
 @media (max-width: 640px) {
   .navbar-wrap {
-    padding-right: 50px;
+    padding-right: 44px;
   }
 
   .navbar {
-    padding: 8px 12px;
-    gap: 8px;
+    padding: 8px 10px;
+    gap: 6px;
   }
 
   .nav-links {
     width: 100%;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 4px;
   }
 
   .nav-pill {
-    padding: 5px 10px;
-    font-size: 13px;
+    padding: 4px 8px;
+    font-size: 12.5px;
+  }
+
+  .nav-search-kbd {
+    display: none;
   }
 }
 </style>

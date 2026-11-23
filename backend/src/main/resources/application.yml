@@ -31,6 +31,21 @@ spring:
       audio:
         speech: none
         transcription: none
+    mcp:
+      server:
+        enabled: true
+        name: myblog-mcp
+        version: 1.0.0
+        type: SYNC
+        protocol: STREAMABLE
+        instructions: "MyBlog 个人技术博客 MCP 工具服务，支持检索已发布文章、标签分类与学习路径，以及在授权下创建/修改草稿与追加学习路径导图节点。"
+        streamable-http:
+          mcp-endpoint: /api/v1/mcp
+          keep-alive-interval: 30s
+
+blog:
+  mcp:
+    bootstrap-token: ${BLOG_MCP_BOOTSTRAP_TOKEN:}
 
 # 数据访问
 mybatis-plus:

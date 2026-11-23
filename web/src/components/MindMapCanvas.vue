@@ -1222,8 +1222,8 @@ html.dark .res-badge--webpage {
 
 @media (max-width: 780px) {
   .mindmap-viewport {
-    height: 430px;
-    min-height: 360px;
+    height: 390px;
+    min-height: 320px;
   }
 
   .canvas-hint-hud {
@@ -1235,6 +1235,39 @@ html.dark .res-badge--webpage {
     right: 10px;
     transform: none;
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 520px) {
+  .mindmap-viewport {
+    height: 330px;
+    min-height: 280px;
+  }
+
+  .canvas-control-hud {
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 16px;
+    padding: 5px 8px;
+    gap: 2px 4px;
+    white-space: normal;
+  }
+
+  .hud-sep {
+    display: none;
+  }
+
+  .hud-btn,
+  .hud-icon-btn,
+  .hud-zoom-readout {
+    height: 24px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
+  .hud-icon-btn {
+    width: 24px;
+    padding: 0;
   }
 }
 </style>

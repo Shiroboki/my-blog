@@ -18,6 +18,10 @@ import type {
   BlogLinkForm,
   BlogLinkItem,
   BlogLinkQuery,
+  BlogMcpCreatedToken,
+  BlogMcpOverview,
+  BlogMcpSettingsForm,
+  BlogMcpTokenCreateForm,
   BlogTagForm,
   BlogTagItem,
   BlogTagQuery,
@@ -302,6 +306,46 @@ export const BlogLearningPathAPI = {
   deleteByIds(ids: string) {
     return request({
       url: `${BLOG_BASE}/learning-paths/${ids}`,
+      method: "delete",
+    });
+  },
+};
+
+export const BlogMcpAPI = {
+  getOverview() {
+    return request<unknown, BlogMcpOverview>({
+      url: `${BLOG_BASE}/mcp/overview`,
+      method: "get",
+    });
+  },
+
+  updateSettings(data: BlogMcpSettingsForm) {
+    return request({
+      url: `${BLOG_BASE}/mcp/settings`,
+      method: "put",
+      data,
+    });
+  },
+
+  createToken(data: BlogMcpTokenCreateForm) {
+    return request<unknown, BlogMcpCreatedToken>({
+      url: `${BLOG_BASE}/mcp/tokens`,
+      method: "post",
+      data,
+    });
+  },
+
+  updateTokenStatus(id: string, status: number) {
+    return request({
+      url: `${BLOG_BASE}/mcp/tokens/${id}/status`,
+      method: "patch",
+      params: { status },
+    });
+  },
+
+  deleteToken(id: string) {
+    return request({
+      url: `${BLOG_BASE}/mcp/tokens/${id}`,
       method: "delete",
     });
   },

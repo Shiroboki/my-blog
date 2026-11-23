@@ -169,6 +169,31 @@ CREATE TABLE `blog_learning_path` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='博客学习路径与思维导图表';
 
 -- ----------------------------
+-- 表结构：blog_mcp_token（博客 MCP API 密钥表）
+-- ----------------------------
+DROP TABLE IF EXISTS `blog_mcp_token`;
+CREATE TABLE `blog_mcp_token` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `name` varchar(80) NOT NULL COMMENT '密钥名称',
+  `token_prefix` varchar(32) NOT NULL COMMENT '展示前缀掩码',
+  `token_hash` char(64) NOT NULL COMMENT 'SHA-256 摘要',
+  `scopes` varchar(128) NOT NULL DEFAULT 'read' COMMENT '权限作用域(read/write/admin)',
+  `status` tinyint NOT NULL DEFAULT 1 COMMENT '状态(1启用 0禁用)',
+  `expire_time` datetime DEFAULT NULL COMMENT '过期时间(NULL永不过期)',
+  `last_used_time` datetime DEFAULT NULL COMMENT '最近调用时间',
+  `call_count` bigint NOT NULL DEFAULT 0 COMMENT '累计调用次数',
+  `remark` varchar(255) DEFAULT NULL COMMENT '备注',
+  `create_time` datetime NOT NULL COMMENT '创建时间',
+  `update_time` datetime NOT NULL COMMENT '更新时间',
+  `create_by` bigint DEFAULT NULL COMMENT '创建人ID',
+  `update_by` bigint DEFAULT NULL COMMENT '更新人ID',
+  `is_deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除(0未删 1已删)',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_blog_mcp_token_hash` (`token_hash`),
+  KEY `idx_blog_mcp_token_status` (`status`, `is_deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='博客 MCP API 密钥表';
+
+-- ----------------------------
 -- 菜单权限（扩展模块号段：93）
 -- ----------------------------
 INSERT IGNORE INTO `sys_menu` (`id`, `parent_id`, `tree_path`, `name`, `type`, `route_name`, `route_path`, `component`, `perm`, `keep_alive`, `visible`, `sort`, `icon`, `redirect`, `create_time`, `update_time`, `params`) VALUES
@@ -207,7 +232,12 @@ INSERT IGNORE INTO `sys_menu` (`id`, `parent_id`, `tree_path`, `name`, `type`, `
 (930801, 9308, '0,93,9308', '路径查询', 'B', NULL, '', NULL, 'blog:learning-path:list', NULL, 1, 1, '', NULL, now(), now(), NULL),
 (930802, 9308, '0,93,9308', '路径新增', 'B', NULL, '', NULL, 'blog:learning-path:create', NULL, 1, 2, '', NULL, now(), now(), NULL),
 (930803, 9308, '0,93,9308', '路径修改', 'B', NULL, '', NULL, 'blog:learning-path:update', NULL, 1, 3, '', NULL, now(), now(), NULL),
-(930804, 9308, '0,93,9308', '路径删除', 'B', NULL, '', NULL, 'blog:learning-path:delete', NULL, 1, 4, '', NULL, now(), now(), NULL);
+(930804, 9308, '0,93,9308', '路径删除', 'B', NULL, '', NULL, 'blog:learning-path:delete', NULL, 1, 4, '', NULL, now(), now(), NULL),
+(9309, 93, '0,93', 'MCP 接入', 'M', 'BlogMcp', 'mcp', 'blog/mcp/index', NULL, 1, 1, 8, 'el-icon-Connection', NULL, now(), now(), NULL),
+(930901, 9309, '0,93,9309', 'MCP查看', 'B', NULL, '', NULL, 'blog:mcp:list', NULL, 1, 1, '', NULL, now(), now(), NULL),
+(930902, 9309, '0,93,9309', '密钥创建', 'B', NULL, '', NULL, 'blog:mcp:create', NULL, 1, 2, '', NULL, now(), now(), NULL),
+(930903, 9309, '0,93,9309', 'MCP配置修改', 'B', NULL, '', NULL, 'blog:mcp:update', NULL, 1, 3, '', NULL, now(), now(), NULL),
+(930904, 9309, '0,93,9309', '密钥删除', 'B', NULL, '', NULL, 'blog:mcp:delete', NULL, 1, 4, '', NULL, now(), now(), NULL);
 
 -- 授权给系统管理员角色（role_id=2）
 INSERT IGNORE INTO `sys_role_menu` VALUES
@@ -219,7 +249,8 @@ INSERT IGNORE INTO `sys_role_menu` VALUES
 (2, 9304), (2, 930401), (2, 930402), (2, 930403), (2, 930404),
 (2, 9305), (2, 930501), (2, 930502),
 (2, 9306), (2, 930601), (2, 930602), (2, 930603), (2, 930604),
-(2, 9308), (2, 930801), (2, 930802), (2, 930803), (2, 930804);
+(2, 9308), (2, 930801), (2, 930802), (2, 930803), (2, 930804),
+(2, 9309), (2, 930901), (2, 930902), (2, 930903), (2, 930904);
 
 -- ----------------------------
 -- 初始站点配置
@@ -239,6 +270,8 @@ INSERT IGNORE INTO `blog_config` (`config_key`, `config_value`, `config_desc`, `
 ('giscus_category', '', 'Giscus Discussion 分类名称', now(), now(), 0),
 ('giscus_category_id', '', 'Giscus Category ID', now(), now(), 0),
 ('giscus_mapping', 'pathname', 'Giscus 页面映射方式', now(), now(), 0),
+('mcp_enabled', '1', '是否开启 MCP Server 接入(0否 1是)', now(), now(), 0),
+('mcp_allow_publish', '0', '是否允许 MCP 工具直接发布文章(0仅草稿 1允许发布)', now(), now(), 0),
 ('about_content', '# 关于本站\n\n这是一个基于 **youlai-boot**（Spring Boot + MySQL + Redis + Spring Security）与 **Vue 3** 搭建的个人博客系统。\n\n## 技术栈\n\n- **后端**：Spring Boot 4 · MyBatis-Plus · Spring Security · Redis · MySQL 8\n- **管理后台**：Vue 3 · TypeScript · Element Plus（基于 `vue3-element-admin`）\n- **博客前台**：Vue 3 · Vite · Markdown 代码高亮与目录导航\n\n欢迎在文章下方留言交流！', '关于页面 Markdown 内容', now(), now(), 0);
 
 -- ----------------------------
